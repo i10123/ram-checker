@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:RAMChecker.ViewModels"
-        Title="RAM Checker" Height="450" Width="800">
+        Title="RAM Checker" Height="600" Width="1200">
     <!-- ViewModel предоставляет окну данные для привязки. -->
     <Window.DataContext>
         <vm:MainViewModel />
@@ -22,8 +22,22 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Объём, ГБ" Binding="{Binding size_GB}" />
                 <DataGridTextColumn Header="Производитель" Binding="{Binding maker}" />
-                <!-- Указывает частоту тактов и скорость передачи данных DDR. -->
-                <DataGridTextColumn Header="Частота / скорость передачи" Binding="{Binding RAM_frequency_MHz}" />
+                <!-- Частота и эффективная скорость передачи отображаются в отдельных столбцах. -->
+                <DataGridTextColumn Header="Частота, МГц" Binding="{Binding RAM_frequency_MHz}" />
+                <DataGridTextColumn Header="Скорость, MT/s" Binding="{Binding RAM_speed_MT_s}" />
+                <DataGridTextColumn Header="Тип памяти" Binding="{Binding RAM_type}" />
+                <DataGridTextColumn Header="Форм-фактор" Binding="{Binding RAM_formFactor}" />
+                <DataGridTextColumn Header="Напряжение, В" Binding="{Binding RAM_voltage_V}" />
+                <DataGridTextColumn Header="Ширина данных, бит" Binding="{Binding RAM_dataWidth_bits}" />
+                <DataGridTextColumn Header="Полная ширина, бит" Binding="{Binding RAM_totalWidth_bits}" />
+                <!-- WMI пока не предоставляет значения таймингов CL, tRCD, tRP и tRAS. -->
+                <DataGridTextColumn Header="CL" Binding="{Binding RAM_CL}" />
+                <DataGridTextColumn Header="tRCD" Binding="{Binding RAM_tRCD}" />
+                <DataGridTextColumn Header="tRP" Binding="{Binding RAM_tRP}" />
+                <DataGridTextColumn Header="tRAS" Binding="{Binding RAM_tRAS}" />
+                <DataGridTextColumn Header="Номер детали" Binding="{Binding RAM_partNumber}" />
+                <DataGridTextColumn Header="Расположение" Binding="{Binding RAM_deviceLocator}" />
+                <DataGridTextColumn Header="Банк" Binding="{Binding RAM_bankLabel}" />
             </DataGrid.Columns>
         </DataGrid>
 

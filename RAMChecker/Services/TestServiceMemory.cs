@@ -14,14 +14,40 @@ namespace RAMChecker.Services
                 {
                     size_GB = 8,
                     maker = "Kingston",
-                    // Тестовый пример показывает частоту и скорость передачи DDR.
-                    RAM_frequency_MHz = "1600 МГц (3200 MT/s)"
+                    RAM_partNumber = "Недоступно",
+                    RAM_type = "DDR4",
+                    RAM_formFactor = "SO-DIMM",
+                    RAM_frequency_MHz = "1600",
+                    RAM_speed_MT_s = "3200",
+                    RAM_voltage_V = "1,2",
+                    RAM_dataWidth_bits = "64",
+                    RAM_totalWidth_bits = "64",
+                    RAM_deviceLocator = "DIMM 0",
+                    RAM_bankLabel = "BANK 0",
+                    // Временная заглушка показывает, что тайминги пока недоступны.
+                    RAM_CL = "Недоступно",
+                    RAM_tRCD = "Недоступно",
+                    RAM_tRP = "Недоступно",
+                    RAM_tRAS = "Недоступно"
                 },
                 new ModuleMemoryModel
                 {
                     size_GB = 8,
                     maker = "Kingston",
-                    RAM_frequency_MHz = "1600 МГц (3200 MT/s)"
+                    RAM_partNumber = "Недоступно",
+                    RAM_type = "DDR4",
+                    RAM_formFactor = "SO-DIMM",
+                    RAM_frequency_MHz = "1600",
+                    RAM_speed_MT_s = "3200",
+                    RAM_voltage_V = "1,2",
+                    RAM_dataWidth_bits = "64",
+                    RAM_totalWidth_bits = "64",
+                    RAM_deviceLocator = "DIMM 1",
+                    RAM_bankLabel = "BANK 0",
+                    RAM_CL = "Недоступно",
+                    RAM_tRCD = "Недоступно",
+                    RAM_tRP = "Недоступно",
+                    RAM_tRAS = "Недоступно"
                 }
             };
         }
