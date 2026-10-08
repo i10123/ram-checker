@@ -11,9 +11,7 @@ using System.Windows.Shapes;
 
 namespace RAMChecker
 {
-    /// <summary>
-    /// Interaction logic for MainWindow.xaml
-    /// </summary>
+    // Код окна; InitializeComponent загружает разметку из MainWindow.xaml.
     public partial class MainWindow : Window
     {
         public MainWindow()

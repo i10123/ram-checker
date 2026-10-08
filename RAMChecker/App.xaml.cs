@@ -4,9 +4,7 @@ using System.Windows;
 
 namespace RAMChecker
 {
-    /// <summary>
-    /// Interaction logic for App.xaml
-    /// </summary>
+    // Класс запуска приложения, связанный с настройками в App.xaml.
     public partial class App : Application
     {
     }

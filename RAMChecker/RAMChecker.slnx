@@ -1,3 +1,4 @@
+<!-- Решение объединяет проекты, которые открываются вместе в Visual Studio. -->
 <Solution>
   <Project Path="RAMChecker.csproj" />
 </Solution>

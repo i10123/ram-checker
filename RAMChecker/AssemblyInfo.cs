@@ -1,3 +1,4 @@
+// Настройки помогают WPF находить ресурсы оформления для элементов приложения.
 using System.Windows;
 
 [assembly: ThemeInfo(

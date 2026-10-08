@@ -3,11 +3,13 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:RAMChecker.ViewModels"
         Title="RAM Checker" Height="450" Width="800">
+    <!-- ViewModel предоставляет окну данные для привязки. -->
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
 
     <Grid Margin="20">
+        <!-- Таблица показывает свойства каждого модуля памяти. -->
         <DataGrid ItemsSource="{Binding ModulesMemory}"
                   AutoGenerateColumns="False"
                   IsReadOnly="True">

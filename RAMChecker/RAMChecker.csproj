@@ -10,4 +10,8 @@
     <RootNamespace>RAMChecker</RootNamespace>
   </PropertyGroup>
 
+  <ItemGroup>
+    <!-- Библиотека Microsoft для получения сведений Windows через WMI. -->
+    <PackageReference Include="System.Management" Version="10.0.12" />
+  </ItemGroup>
 </Project>
