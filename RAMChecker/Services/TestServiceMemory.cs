@@ -14,13 +14,14 @@ namespace RAMChecker.Services
                 {
                     size_GB = 8,
                     maker = "Kingston",
-                    RAM_frequency_MHz = "3200"
+                    // Тестовый пример показывает частоту и скорость передачи DDR.
+                    RAM_frequency_MHz = "1600 МГц (3200 MT/s)"
                 },
                 new ModuleMemoryModel
                 {
                     size_GB = 8,
                     maker = "Kingston",
-                    RAM_frequency_MHz = "3200"
+                    RAM_frequency_MHz = "1600 МГц (3200 MT/s)"
                 }
             };
         }

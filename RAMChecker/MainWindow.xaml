@@ -9,15 +9,45 @@
     </Window.DataContext>
 
     <Grid Margin="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
         <!-- Таблица показывает свойства каждого модуля памяти. -->
-        <DataGrid ItemsSource="{Binding ModulesMemory}"
+        <DataGrid Grid.Row="0"
+                  ItemsSource="{Binding ModulesMemory}"
                   AutoGenerateColumns="False"
                   IsReadOnly="True">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Объём, ГБ" Binding="{Binding size_GB}" />
                 <DataGridTextColumn Header="Производитель" Binding="{Binding maker}" />
-                <DataGridTextColumn Header="Частота, МГц" Binding="{Binding RAM_frequency_MHz}" />
+                <!-- Указывает частоту тактов и скорость передачи данных DDR. -->
+                <DataGridTextColumn Header="Частота / скорость передачи" Binding="{Binding RAM_frequency_MHz}" />
             </DataGrid.Columns>
         </DataGrid>
+
+        <!-- Показывает сообщение, если сведения не удалось получить. -->
+        <StackPanel Grid.Row="1" Margin="0,12,0,0">
+            <TextBlock Text="{Binding StatusMessage}"
+                       TextWrapping="Wrap"
+                       Margin="0,0,0,8" />
+
+            <!-- Кнопка появляется только после ошибки доступа к WMI. -->
+            <Button Content="Перезапустить от имени администратора"
+                    Command="{Binding RestartAsAdminCommand}"
+                    HorizontalAlignment="Left">
+                <Button.Style>
+                    <Style TargetType="Button">
+                        <Setter Property="Visibility" Value="Collapsed" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding ShowAdminButton}" Value="True">
+                                <Setter Property="Visibility" Value="Visible" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </Button.Style>
+            </Button>
+        </StackPanel>
     </Grid>
 </Window>
