@@ -22,9 +22,10 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
 
     public ObservableCollection<ModuleMemoryModel> ModulesMemory { get; } = [];
     public MemorySnapshot? Memory { get; private set; }
-    // Точки графика меняются на месте: новые коллекции каждую секунду лишь нагружали бы сборщик мусора.
-    public PointCollection UsagePoints { get; } = [];
-    public PointCollection UsageArea { get; } = [];
+    // Точки графика для страницы теста: новая замороженная коллекция на каждое обновление,
+    // потому что изменения внутри одной коллекции WPF не перерисовывает.
+    public PointCollection UsagePoints { get; private set; } = [];
+    public PointCollection UsageArea { get; private set; } = [];
     public List<Stolbec> BenchmarkBars { get; private set; } = [];
     public string BenchmarkText { get; private set; } = "Замер ещё не выполнялся";
     public bool BenchmarkRunning { get; private set; }
@@ -36,6 +37,11 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
     public string TotalText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Total);
     public string UsedText => Memory is null ? "—" : $"{MemorySnapshot.Format(Memory.Used)} · {Memory.Load:0}%";
     public string LoadText => Memory is null ? "—" : $"{Memory.Load:0}%";
+    // Выделенная программам память (commit) вместе с файлом подкачки.
+    public string CommitText => Memory is { Committed: ulong c, CommitLimit: ulong l } ? $"{MemorySnapshot.Format(c)} из {MemorySnapshot.Format(l)}" : "—";
+    public GridLength CommitUsed => new(Memory?.Committed ?? 0, GridUnitType.Star);
+    public GridLength CommitFree => new(Memory is { Committed: ulong c, CommitLimit: ulong l } && l > c ? l - c : 1, GridUnitType.Star);
+    public List<KeyValuePair<string, string>> MemoryRows { get; private set; } = [];
     public string AvailableText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Available);
     public string ModulesText => $"{ModulesMemory.Count} шт. · {ModulesMemory.FirstOrDefault()?.RAM_type ?? "—"}";
 
@@ -111,16 +117,10 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
             samples.Enqueue(Memory.Load);
             if (samples.Count > 60)
                 samples.Dequeue();
-            // График последних 60 измерений в области 600 × 160; заливка замыкается по нижнему краю.
-            UsagePoints.Clear();
-            int i = 60 - samples.Count;
-            foreach (double load in samples)
-                UsagePoints.Add(new Point(i++ * 600 / 59d, 160 - load * 1.6));
-            UsageArea.Clear();
-            foreach (var point in UsagePoints)
-                UsageArea.Add(point);
-            UsageArea.Add(new Point(600, 160));
-            UsageArea.Add(new Point(UsagePoints[0].X, 160));
+            UpdateMemoryRows(Memory);
+            // График виден только на странице теста — на других страницах его не пересчитываем.
+            if (glavnaya.SelectedPage == 1)
+                UpdateChart();
         }
         catch (Exception ex) { glavnaya.Notice = "Мониторинг недоступен: " + ex.Message; }
         if (spd is not null && temperatureTask is not { IsCompleted: false })
@@ -129,9 +129,35 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
                 foreach (var m in ModulesMemory.Where(m => m.SpdAddress != 0))
                     m.RAM_temperature = spd.Temperature(m.SpdAddress) is double t ? $"{t:0.0} °C" : ModuleMemoryModel.NetDannyh;
             });
-        Changed(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText));
+        Changed(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText), nameof(CommitText), nameof(CommitUsed), nameof(CommitFree));
         if (spd is not null)
             Changed(nameof(ModuleRows));
+    }
+
+    // График последних 60 измерений в области 600 × 160; заливка замыкается по нижнему краю.
+    private void UpdateChart()
+    {
+        var line = samples.Select((load, i) => new Point((60 - samples.Count + i) * 600 / 59d, 160 - load * 1.6)).ToList();
+        UsagePoints = new PointCollection(line);
+        UsageArea = new PointCollection(line.Append(new(600, 160)).Append(new(line[0].X, 160)));
+        UsagePoints.Freeze();
+        UsageArea.Freeze();
+        Changed(nameof(UsagePoints), nameof(UsageArea));
+    }
+
+    // Строки пересоздаются, только когда меняется хотя бы одно значение, — экран не перестраивается каждую секунду.
+    private void UpdateMemoryRows(MemorySnapshot m)
+    {
+        List<KeyValuePair<string, string>> rows =
+        [
+            new("Системный кэш", m.Cache is ulong cache ? MemorySnapshot.Format(cache) : ModuleMemoryModel.NetDannyh),
+            new("Файл подкачки", m.CommitLimit is ulong l && l > m.Total ? MemorySnapshot.Format(l - m.Total) : "Нет"),
+            new("Доступно для проверки", MemorySnapshot.Format((ulong)MemorySnapshot.SafeTestBytes(m)))
+        ];
+        if (rows.SequenceEqual(MemoryRows))
+            return;
+        MemoryRows = rows;
+        Changed(nameof(MemoryRows));
     }
 
     private async Task BenchmarkAsync()

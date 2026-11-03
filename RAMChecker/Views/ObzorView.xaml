@@ -63,35 +63,25 @@
                 </Border>
 
                 <StackPanel Grid.Column="1">
-                    <!-- График загрузки памяти за последние 60 измерений. -->
+                    <!-- Как Windows распределяет память: эти данные не повторяют сводку сверху. -->
                     <Border Style="{StaticResource Kartochka}">
-                        <Grid>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto" />
-                                <RowDefinition Height="170" />
-                                <RowDefinition Height="Auto" />
-                            </Grid.RowDefinitions>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto" />
-                                <ColumnDefinition />
-                            </Grid.ColumnDefinitions>
-                            <TextBlock Grid.ColumnSpan="2" Text="Загрузка памяти" Style="{StaticResource Podzagolovok}" />
-                            <TextBlock Grid.ColumnSpan="2" Text="{Binding LoadText}" HorizontalAlignment="Right" FontSize="20"
-                                       FontWeight="SemiBold" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
-
-                            <!-- Шкала процентов слева от графика. -->
-                            <DockPanel Grid.Row="1" Margin="0,0,8,0">
-                                <TextBlock DockPanel.Dock="Top" Text="100%" Style="{StaticResource Podpis}" FontSize="11" />
-                                <TextBlock DockPanel.Dock="Bottom" Text="0%" Style="{StaticResource Podpis}" FontSize="11" />
-                                <TextBlock Text="50%" Style="{StaticResource Podpis}" FontSize="11" VerticalAlignment="Center" />
+                        <StackPanel>
+                            <TextBlock Text="Распределение памяти" Style="{StaticResource Podzagolovok}" />
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Right" Text="{Binding CommitText}" />
+                                <TextBlock Text="Выделено программам" Style="{StaticResource Podpis}" />
                             </DockPanel>
-
-                            <ContentControl Grid.Row="1" Grid.Column="1" Content="{Binding}" ContentTemplate="{StaticResource GrafikZagruzki}" />
-                            <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,6,0,0">
-                                <TextBlock DockPanel.Dock="Right" Text="сейчас" Style="{StaticResource Podpis}" FontSize="11" />
-                                <TextBlock Text="60 секунд назад" Style="{StaticResource Podpis}" FontSize="11" />
-                            </DockPanel>
-                        </Grid>
+                            <!-- Полоса без анимации: две колонки делят ширину пропорционально выделенной и свободной памяти. -->
+                            <Grid Height="8" Margin="0,8,0,16">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="{Binding CommitUsed}" />
+                                    <ColumnDefinition Width="{Binding CommitFree}" />
+                                </Grid.ColumnDefinitions>
+                                <Border CornerRadius="4,0,0,4" Background="{DynamicResource AccentFillColorDefaultBrush}" />
+                                <Border Grid.Column="1" CornerRadius="0,4,4,0" Background="{DynamicResource ControlStrongFillColorDisabledBrush}" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding MemoryRows}" ItemTemplate="{StaticResource StrokaTablicy}" />
+                        </StackPanel>
                     </Border>
 
                     <!-- Замер скорости: столбцы пропорциональны лучшему результату. -->
