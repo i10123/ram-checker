@@ -14,7 +14,6 @@ public class TestirovanieViewModel : NabludaemyObject
     private CancellationTokenSource? cancellation;
     private Task? running;
     private DiagnosticResult? active;
-    private double memoryMiB = 512;
     private long lastSaved;
 
     public string[] Modes { get; } = ["Быстрая · 10 минут", "Полная · 2 часа", "Циклическая · до остановки", "Стресс · вся свободная память"];
@@ -44,13 +43,13 @@ public class TestirovanieViewModel : NabludaemyObject
     // Объём кратен 16 МБ, чтобы буфер делился на 256 равных блоков карты.
     public double MemoryMiB
     {
-        get => memoryMiB;
+        get;
         set
         {
-            memoryMiB = Math.Max(64, Math.Floor(value / 16) * 16);
+            field = Math.Max(64, Math.Floor(value / 16) * 16);
             Changed();
         }
-    }
+    } = 512;
 
     public TestirovanieViewModel(MainViewModel glavnaya)
     {

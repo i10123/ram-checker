@@ -6,10 +6,7 @@ namespace RAMChecker.Services;
 
 public class LocalStorage
 {
-    public string DirectoryPath
-    {
-        get;
-    }
+    public string DirectoryPath { get; }
     private readonly JsonSerializerOptions options = new() { WriteIndented = true };
     public LocalStorage(string? directory = null) => DirectoryPath = directory ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MemScope");

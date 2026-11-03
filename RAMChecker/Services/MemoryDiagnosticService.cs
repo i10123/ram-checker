@@ -64,6 +64,7 @@ public static class MemoryDiagnosticService
         var blocks = new nint[MapSize];
         int blockWords = (int)(bytes / 4 / MapSize);
         int pass = 0, step = 0, done = 0;
+        var errorsLock = new Lock(); // System.Threading.Lock (.NET 9) — отдельный объект только для синхронизации
         long blockSteps = 0; // сколько раз блоки уже записаны или проверены — для скорости проверки
         long lastReport = -1000;
         Span<uint> Block(int b) => new((void*)blocks[b], blockWords);
@@ -84,7 +85,7 @@ public static class MemoryDiagnosticService
 
         void OnError(int block, long address, uint expected, uint actual)
         {
-            lock (result)
+            lock (errorsLock)
             {
                 result.ErrorCount++;
                 result.Map[block] = Error;

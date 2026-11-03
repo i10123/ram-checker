@@ -13,15 +13,12 @@ public class MainViewModel : NabludaemyObject
     // Мониторинг обновляется раз в секунду.
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool historyWritable = true;
-    private int selectedPage;
-    private string notice = "";
-    private DiagnosticResult? selectedResult;
 
     public ObzorViewModel Obzor { get; }
     public TestirovanieViewModel Test { get; }
     public ObservableCollection<DiagnosticResult> History { get; } = [];
     public string[] Navigation { get; } = ["Обзор", "Тестирование", "Результаты"];
-    public bool HasNotice => notice.Length > 0;
+    public bool HasNotice => Notice.Length > 0;
     public bool HasHistory => History.Count > 0;
     public bool HasNoHistory => History.Count == 0;
     public Komanda DeleteResultCommand { get; }
@@ -40,30 +37,30 @@ public class MainViewModel : NabludaemyObject
 
     public int SelectedPage
     {
-        get => selectedPage;
+        get;
         set
         {
-            selectedPage = value;
+            field = value;
             Changed();
         }
     }
 
     public string Notice
     {
-        get => notice;
+        get;
         set
         {
-            notice = value;
+            field = value;
             Changed();
         }
-    }
+    } = "";
 
     public DiagnosticResult? SelectedResult
     {
-        get => selectedResult;
+        get;
         set
         {
-            selectedResult = value;
+            field = value;
             Changed();
         }
     }

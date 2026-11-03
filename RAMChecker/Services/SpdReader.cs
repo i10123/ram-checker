@@ -1,3 +1,5 @@
+using System.Buffers.Binary;
+
 namespace RAMChecker.Services;
 
 public record SpdInfo(byte Address, int NominalSpeed, int CL, int RCD, int RP, int RAS, int RC, bool HasSensor);
@@ -62,7 +64,7 @@ public sealed class SpdReader : IDisposable
         int Clocks(int ps) => (ps * 1000 / tCK + 974) / 1000;
         int cl = Clocks(Ps(b[24], 123));
         // Байты 20–23 — список поддерживаемых CL, бит 0 соответствует CL7.
-        uint supported = BitConverter.ToUInt32(b, 20) & 0x3FFFFFFF;
+        uint supported = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(20)) & 0x3FFFFFFF;
         while (cl < 37 && (supported >> (cl - 7) & 1) == 0)
             cl++;
         return new(address, 2_000_000 / tCK, cl, Clocks(Ps(b[25], 122)), Clocks(Ps(b[26], 121)),

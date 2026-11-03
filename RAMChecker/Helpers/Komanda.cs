@@ -2,18 +2,9 @@ using System.Windows.Input;
 
 namespace RAMChecker.Helpers
 {
-    // Связывает действие из ViewModel с кнопкой WPF.
-    public class Komanda : ICommand
+    // Связывает действие из ViewModel с кнопкой WPF. Параметры основного конструктора (C# 12) доступны во всём классе.
+    public class Komanda(Action execute, Func<bool>? canExecute = null) : ICommand
     {
-        private readonly Action execute;
-        private readonly Func<bool>? canExecute;
-
-        public Komanda(Action execute, Func<bool>? canExecute = null)
-        {
-            this.execute = execute;
-            this.canExecute = canExecute;
-        }
-
         // WPF сам перепроверяет доступность кнопок после действий пользователя и вызова Refresh.
         public event EventHandler? CanExecuteChanged
         {

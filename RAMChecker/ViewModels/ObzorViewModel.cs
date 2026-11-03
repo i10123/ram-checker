@@ -18,7 +18,6 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
     private readonly Queue<double> samples = new();
     private SpdReader? spd;
     private Task? temperatureTask;
-    private ModuleMemoryModel? selectedModule;
 
     public ObservableCollection<ModuleMemoryModel> ModulesMemory { get; } = [];
     public MemorySnapshot? Memory { get; private set; }
@@ -54,10 +53,10 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
 
     public ModuleMemoryModel? SelectedModule
     {
-        get => selectedModule;
+        get;
         set
         {
-            selectedModule = value;
+            field = value;
             Changed();
         }
     }

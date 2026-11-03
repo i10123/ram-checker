@@ -9,7 +9,8 @@ namespace RAMChecker.Helpers
 
         // Без имён свойств WPF перечитывает все привязки объекта. Для частых обновлений
         // (раз в секунду) перечисляем только изменившиеся свойства, чтобы не перерисовывать весь экран.
-        protected void Changed(params string[] properties)
+        // params ReadOnlySpan (C# 13) передаёт имена через стек, без создания массива при каждом вызове.
+        protected void Changed(params ReadOnlySpan<string> properties)
         {
             if (properties.Length == 0)
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
