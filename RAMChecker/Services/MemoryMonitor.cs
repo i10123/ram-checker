@@ -18,6 +18,10 @@ public static partial class MemoryMonitor
     // Агрессивная сборка мусора не только освобождает объекты, но и возвращает свободную память Windows.
     public static void ReturnFreeMemory() => GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
 
+    // Во время проверки Windows не уходит в сон: ES_CONTINUOUS | ES_SYSTEM_REQUIRED, после проверки — только ES_CONTINUOUS.
+    // Флаг действует для вызвавшего потока, поэтому включается и выключается из потока интерфейса.
+    public static void KeepAwake(bool on) => SetThreadExecutionState(on ? 0x80000001u : 0x80000000u);
+
     public static MemorySnapshot Read()
     {
         var m = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
@@ -52,4 +56,6 @@ public static partial class MemoryMonitor
     [LibraryImport("psapi.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static partial bool GetPerformanceInfo(ref PerformanceInfo info, uint size);
+    [LibraryImport("kernel32.dll")]
+    private static partial uint SetThreadExecutionState(uint flags);
 }

@@ -124,7 +124,9 @@ public class TestirovanieViewModel : NabludaemyObject
             Log("Имитация ошибки памяти включена");
         var task = MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], StopOnError, progress, cancellation.Token, imitation);
         running = task;
+        MemoryMonitor.KeepAwake(true);
         var result = await task;
+        MemoryMonitor.KeepAwake(false);
         result.Started = session.Started;
         result.Mode = session.Mode;
         result.Configuration = session.Configuration;
