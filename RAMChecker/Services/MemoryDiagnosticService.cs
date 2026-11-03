@@ -1,145 +1,125 @@
 using System.Diagnostics;
-using System.Threading;
 using RAMChecker.Models;
 
 namespace RAMChecker.Services;
 
-public record DiagnosticProgress(string Stage, int Pass, double Percent, double ElapsedSeconds,
-    long AllocatedBytes, long VerifiedBytes, long ErrorCount);
+public record DiagnosticProgress(string Stage, int Pass, double Percent, TimeSpan Elapsed, long ErrorCount, byte[] Map);
 
+// Собственный алгоритм «Свой адрес с инверсией». Один проход состоит из трёх шагов:
+// 1) в каждую ячейку записывается значение, вычисленное из её адреса;
+// 2) прямой обход: ячейка сверяется со своим значением, затем в неё пишется инверсия;
+// 3) обратный обход: сверяется инверсия, затем возвращается исходное значение.
+// Шаг 1 находит ошибки адресации (две ячейки отвечают по одному адресу),
+// шаги 2–3 — «залипшие» биты и влияние записи в соседние ячейки.
 public static class MemoryDiagnosticService
 {
-    private static uint Expected(long word, int stage, int pass)
+    public const string Algorithm = "Свой адрес с инверсией";
+    // Буфер делится на столько же блоков, сколько клеток на карте памяти.
+    public const int MapSize = 256;
+    public const byte NotChecked = 0, Ok = 1, Error = 2;
+    private static readonly string[] Steps = ["Заполнение", "Проверка вперёд", "Проверка назад"];
+
+    // Значение зависит от адреса и номера прохода. Умножение на нечётное число взаимно однозначно,
+    // поэтому соседние ячейки всегда хранят разные значения, а каждый проход — новый рисунок битов.
+    public static uint Pattern(long address, int pass) => unchecked((uint)address * 0x9E3779B1u + (uint)pass * 0x7F4A7C15u);
+
+    public static void FillBlock(uint[] block, long start, int pass)
     {
-        if (stage == 0)
-            return 0;
-        if (stage == 1)
-            return uint.MaxValue;
-        if (stage == 2)
-            return ((word + pass) & 1) == 0 ? 0xAAAAAAAAu : 0x55555555u;
-        if (stage == 4)
-            return 1u << (int)((word + pass) & 31);
-        uint x = unchecked((uint)word + (uint)pass * 0x9E3779B9u);
-        x ^= x >> 16;
-        x = unchecked(x * 0x7FEB352Du);
-        x ^= x >> 15;
-        x = unchecked(x * 0x846CA68Bu);
-        return x ^ (x >> 16);
+        for (int i = 0; i < block.Length; i++)
+            block[i] = Pattern(start + i, pass);
     }
 
-    private static readonly string[] Stages = ["Нули", "Единицы", "Шахматный шаблон", "Псевдослучайные данные", "Бегущая единица"];
-    public static string Profile(bool extended) => "Moving Inversions: " + string.Join(", ", Stages.Take(extended ? 5 : 4));
-    private static readonly string[] Sweeps = [" · заполнение", " · проверка →", " · проверка ←"];
-    private const int BlockWords = 4 * 1024 * 1024;
-
-    // Методика Memtest86+: заполнение, проверка/инверсия вперёд, проверка/инверсия назад.
-    private static bool MovingInversions(List<uint[]> buffers, int stage, int pass, DiagnosticResult result,
-        bool stopOnFirstError, CancellationToken token, Action<int> checkpoint)
+    // Сверяет блок с ожидаемыми значениями и записывает инверсию. Возвращает число ошибок.
+    public static int CheckBlock(uint[] block, long start, int pass, bool backward, Action<long, uint, uint> onError)
     {
-        for (int sweep = 0; sweep < 3; sweep++)
+        int errors = 0;
+        for (int k = 0; k < block.Length; k++)
         {
-            bool reverse = sweep == 2;
-            long baseWord = reverse ? buffers.Sum(b => (long)b.Length) : 0;
-            for (int b = reverse ? buffers.Count - 1 : 0; b >= 0 && b < buffers.Count; b += reverse ? -1 : 1)
+            int i = backward ? block.Length - 1 - k : k;
+            uint expected = backward ? ~Pattern(start + i, pass) : Pattern(start + i, pass);
+            if (block[i] != expected)
             {
-                var buffer = buffers[b];
-                if (reverse)
-                    baseWord -= buffer.Length;
-                checkpoint(sweep);
-                for (int i = reverse ? buffer.Length - 1 : 0; i >= 0 && i < buffer.Length; i += reverse ? -1 : 1)
-                {
-                    if ((i & 16383) == 0)
-                    {
-                        token.ThrowIfCancellationRequested();
-                        checkpoint(sweep);
-                    }
-                    uint expected = Expected(baseWord + i, stage, pass);
-                    if (reverse)
-                        expected = ~expected;
-                    if (sweep > 0)
-                    {
-                        uint actual = Volatile.Read(ref buffer[i]);
-                        result.VerifiedBytes += 4;
-                        if (actual != expected)
-                        {
-                            result.ErrorCount++;
-                            if (result.Errors.Count < 1000)
-                                result.Errors.Add(new((baseWord + i) * 4, expected, actual, Stages[stage], pass));
-                            if (stopOnFirstError)
-                                return false;
-                        }
-                    }
-                    Volatile.Write(ref buffer[i], sweep == 0 ? expected : ~expected);
-                }
-                if (!reverse)
-                    baseWord += buffer.Length;
+                errors++;
+                onError(start + i, expected, block[i]);
             }
+            block[i] = ~expected;
         }
-        return true;
+        return errors;
     }
 
     public static Task<DiagnosticResult> RunAsync(long bytes, TimeSpan? duration, bool stopOnFirstError,
-        IProgress<DiagnosticProgress>? progress, CancellationToken token, bool extended = false) => Task.Run(() =>
+        IProgress<DiagnosticProgress> progress, CancellationToken token) => Task.Run(() =>
     {
-        if (bytes < 4 || bytes % 4 != 0)
-            throw new ArgumentOutOfRangeException(nameof(bytes));
-        if (duration.HasValue && duration.Value <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(duration));
-        if (bytes > MemorySnapshot.SafeTestBytes(MemoryMonitor.Read()))
-            throw new InvalidOperationException("Свободной памяти стало меньше. Уменьшите объём проверки.");
-        var result = new DiagnosticResult { RequestedBytes = bytes, Algorithms = Profile(extended) };
-        var buffers = new List<uint[]>();
+        var result = new DiagnosticResult { RequestedBytes = bytes };
         var clock = Stopwatch.StartNew();
+        using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
+        var blocks = new uint[MapSize][];
+        int blockWords = (int)(bytes / 4 / MapSize);
+        int pass = 0, step = 0, done = 0;
         long lastReport = -1000;
-        string stageName = "Выделение памяти";
-        int pass = 0;
-        void Report(bool force = false)
+
+        // Не чаще пяти раз в секунду из любого потока, иначе интерфейс не успевает перерисовываться.
+        void Report()
         {
-            if (!force && clock.ElapsedMilliseconds - lastReport < 200)
+            long now = clock.ElapsedMilliseconds, last = Interlocked.Read(ref lastReport);
+            if (now - last < 200 || Interlocked.CompareExchange(ref lastReport, now, last) != last)
                 return;
-            lastReport = clock.ElapsedMilliseconds;
-            progress?.Report(new(stageName, pass,
-                duration.HasValue ? Math.Min(99, clock.Elapsed.TotalSeconds / duration.Value.TotalSeconds * 100) : 0,
-                clock.Elapsed.TotalSeconds, result.AllocatedBytes, result.VerifiedBytes, result.ErrorCount));
+            progress.Report(new(Steps[step], pass, duration is { } d
+                ? Math.Min(100, clock.Elapsed / d * 100)
+                : (step * MapSize + done) * 100.0 / (3 * MapSize), clock.Elapsed, result.ErrorCount, (byte[])result.Map.Clone()));
         }
+
+        void OnError(int block, long address, uint expected, uint actual)
+        {
+            lock (result)
+            {
+                result.ErrorCount++;
+                result.Map[block] = Error;
+                if (result.Errors.Count < 1000)
+                    result.Errors.Add(new(address * 4, expected, actual, Steps[step], pass));
+            }
+            if (stopOnFirstError)
+                stop.Cancel();
+        }
+
         try
         {
-            for (long remaining = bytes / 4; remaining > 0;)
+            for (int b = 0; b < MapSize; b++)
             {
-                token.ThrowIfCancellationRequested();
-                int words = (int)Math.Min(remaining, BlockWords);
-                buffers.Add(new uint[words]);
-                remaining -= words;
-                result.AllocatedBytes += words * 4L;
-                Report();
+                stop.Token.ThrowIfCancellationRequested();
+                blocks[b] = new uint[blockWords];
+                result.AllocatedBytes += blockWords * 4L;
             }
+            // Блоки обрабатываются параллельно на всех ядрах; шаги идут по всему буферу,
+            // поэтому данные не успевают остаться в кэше процессора между записью и проверкой.
+            var options = new ParallelOptions { CancellationToken = stop.Token };
             do
             {
                 pass++;
-                for (int stage = 0; stage < (extended ? 5 : 4); stage++)
+                for (step = 0; step < Steps.Length; step++)
                 {
-                    stageName = Stages[stage];
-                    result.Events.Add($"{DateTimeOffset.Now:HH:mm:ss} · Проход {pass}: {stageName}");
-                    // Ограничиваем журнал при длительной проверке; сами ошибки хранятся отдельно.
-                    if (result.Events.Count > 300)
-                        result.Events.RemoveAt(0);
-                    Report(true);
-                    var sweepNames = Sweeps.Select(suffix => Stages[stage] + suffix).ToArray();
-                    if (!MovingInversions(buffers, stage, pass, result, stopOnFirstError, token, sweep =>
+                    done = 0;
+                    Report();
+                    Parallel.For(0, MapSize, options, k =>
                     {
-                        stageName = sweepNames[sweep];
+                        int b = step == 2 ? MapSize - 1 - k : k;
+                        long start = (long)b * blockWords;
+                        if (step == 0)
+                            FillBlock(blocks[b], start, pass);
+                        else if (CheckBlock(blocks[b], start, pass, step == 2, (a, e, r) => OnError(b, a, e, r)) == 0 && result.Map[b] != Error)
+                            result.Map[b] = step == 2 ? Ok : NotChecked;
+                        Interlocked.Increment(ref done);
                         Report();
-                    }))
-                    {
-                        result.Status = "Errors";
-                        return result;
-                    }
+                    });
                 }
                 result.Passes = pass;
-            } while (!duration.HasValue || clock.Elapsed < duration.Value);
+            } while (duration is not { } limit || clock.Elapsed < limit);
             result.Status = "Completed";
         }
-        catch (OperationCanceledException) when (token.IsCancellationRequested) { result.Status = "Stopped"; }
+        catch (OperationCanceledException)
+        {
+            result.Status = token.IsCancellationRequested ? "Stopped" : "Errors";
+        }
         catch (Exception ex)
         {
             result.Status = "Failed";
@@ -148,10 +128,8 @@ public static class MemoryDiagnosticService
         finally
         {
             result.ElapsedSeconds = clock.Elapsed.TotalSeconds;
-            result.Events.Add($"{DateTimeOffset.Now:HH:mm:ss} · {result.StatusText}");
-            buffers.Clear();
-            // Освобождаем большие буферы перед возвращением к мониторингу.
-            GC.Collect(2, GCCollectionMode.Optimized, blocking: false);
+            Array.Clear(blocks);
+            GC.Collect();
         }
         return result;
     });
