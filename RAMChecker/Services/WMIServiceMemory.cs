@@ -22,7 +22,7 @@ namespace RAMChecker.Services
                 {
                     Number = modulesMemory.Count + 1,
                     size_GB = (int)(Convert.ToUInt64(module["Capacity"]) >> 30),
-                    maker = GetTextValue(module["Manufacturer"]),
+                    RAM_maker = GetTextValue(module["Manufacturer"]),
                     RAM_partNumber = GetTextValue(module["PartNumber"]),
                     RAM_serialNumber = GetTextValue(module["SerialNumber"]),
                     RAM_type = GetMemoryType(Convert.ToUInt32(module["SMBIOSMemoryType"])),

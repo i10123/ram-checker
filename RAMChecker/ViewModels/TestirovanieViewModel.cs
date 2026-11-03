@@ -113,7 +113,7 @@ public class TestirovanieViewModel : NabludaemyObject
             Mode = Modes[ModeIndex].Split(' ')[0],
             RequestedBytes = (long)MemoryMiB << 20,
             Configuration = string.Join("\n", glavnaya.Obzor.ModulesMemory.Select(m =>
-                $"{m.RAM_slot}: {m.maker} {m.RAM_partNumber}, {m.size_GB} ГБ, {m.RAM_speed}, тайминги {m.RAM_timings}"))
+                $"{m.RAM_slot}: {m.RAM_maker} {m.RAM_partNumber}, {m.size_GB} ГБ, {m.RAM_speed}, тайминги {m.RAM_timings}"))
         };
         (lastSaved, Itog) = (0, null);
         Events.Clear();

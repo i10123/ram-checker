@@ -66,7 +66,7 @@ public class ObzorViewModel : NabludaemyObject
     // Строки паспорта выбранного модуля для таблицы «характеристика — значение».
     public List<KeyValuePair<string, string>> ModuleRows => SelectedModule is not { } m ? [] :
     [
-        new("Производитель", m.maker), new("Модель", m.RAM_partNumber), new("Серийный номер", m.RAM_serialNumber),
+        new("Производитель", m.RAM_maker), new("Модель", m.RAM_partNumber), new("Серийный номер", m.RAM_serialNumber),
         new("Тип", $"{m.RAM_type} {m.RAM_formFactor}"), new("Объём", $"{m.size_GB} ГБ"), new("Слот", m.RAM_slot),
         new("Текущая частота", m.RAM_speed), new("Номинальная частота", m.RAM_nominalSpeed),
         new("Тайминги CL-tRCD-tRP-tRAS", m.RAM_timings), new("tRC", m.RAM_tRC),
