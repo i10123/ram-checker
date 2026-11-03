@@ -74,7 +74,8 @@ public class TestirovanieViewModel : NabludaemyObject
     public TestirovanieViewModel(MainViewModel glavnaya)
     {
         this.glavnaya = glavnaya;
-        StartCommand = new(async () => await StartAsync(), () => !IsRunning && !glavnaya.Obzor.BenchmarkRunning && MemoryMiB <= MaxMemoryMiB);
+        // Задача запуска запоминается, чтобы при закрытии окна дождаться сохранения результата.
+        StartCommand = new(() => running = StartAsync(), () => !IsRunning && !glavnaya.Obzor.BenchmarkRunning && MemoryMiB <= MaxMemoryMiB);
         StopCommand = new(() => cancellation?.Cancel(), () => IsRunning);
     }
 
@@ -96,6 +97,7 @@ public class TestirovanieViewModel : NabludaemyObject
             await running;
     }
 
+    // Кнопка не ожидает эту задачу, поэтому сбой проверки обрабатывается внутри метода.
     private async Task StartAsync()
     {
         // Стресс-режим берёт весь допустимый объём, чтобы нагрузить память и все ядра до предела.
@@ -106,14 +108,13 @@ public class TestirovanieViewModel : NabludaemyObject
             $"Проверка займёт {TestMemoryText} и загрузит все ядра процессора. Компьютер может временно замедлиться, " +
             "сохраните открытые документы. Продолжить?", "Большая нагрузка", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
-        var session = active = new DiagnosticResult
+        var session = new DiagnosticResult
         {
             Mode = Modes[ModeIndex].Split(' ')[0],
             RequestedBytes = (long)MemoryMiB << 20,
             Configuration = string.Join("\n", glavnaya.Obzor.ModulesMemory.Select(m =>
                 $"{m.RAM_slot}: {m.maker} {m.RAM_partNumber}, {m.size_GB} ГБ, {m.RAM_speed}, тайминги {m.RAM_timings}"))
         };
-        cancellation = new();
         (lastSaved, Itog) = (0, null);
         Events.Clear();
         Log($"Запуск: {session.Mode}, {TestMemoryText}");
@@ -141,21 +142,34 @@ public class TestirovanieViewModel : NabludaemyObject
         bool imitation = Environment.GetCommandLineArgs().Contains("--imitaciya");
         if (imitation)
             Log("Имитация ошибки памяти включена");
-        var task = MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], StopOnError, progress, cancellation.Token, imitation);
-        running = task;
+        (active, cancellation) = (session, new());
         MemoryMonitor.KeepAwake(true);
-        var result = await task;
-        MemoryMonitor.KeepAwake(false);
-        result.Started = session.Started;
-        result.Mode = session.Mode;
-        result.Configuration = session.Configuration;
+        DiagnosticResult result;
+        try
+        {
+            result = await MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], StopOnError, progress, cancellation.Token, imitation);
+            result.Started = session.Started;
+            result.Mode = session.Mode;
+            result.Configuration = session.Configuration;
+        }
+        catch (Exception ex)
+        {
+            // Ошибки самой проверки сервис превращает в статус; сюда попадают неверные параметры и непредвиденные сбои.
+            result = session;
+            (result.Status, result.Detail) = (DiagnosticStatus.Failed, ex.Message);
+        }
+        finally
+        {
+            // При любом исходе снимается запрет сна и освобождается отмена — проверку можно запустить снова.
+            MemoryMonitor.KeepAwake(false);
+            cancellation.Dispose();
+            (active, cancellation) = (null, null);
+        }
         glavnaya.History[glavnaya.History.IndexOf(session)] = result;
         glavnaya.SelectedResult = result;
         glavnaya.SaveHistory();
         Log(result.StatusText);
-        (Stage, Kletki, Percent, SpeedText, active, Itog) = (result.StatusText, result.Kletki, result.Status == DiagnosticStatus.Completed ? 100 : Percent, "—", null, result);
-        cancellation.Dispose();
-        cancellation = null;
+        (Stage, Kletki, Percent, SpeedText, Itog) = (result.StatusText, result.Kletki, result.Status == DiagnosticStatus.Completed ? 100 : Percent, "—", result);
         MemoryMonitor.ReturnFreeMemory(); // Убираем накопившиеся за проверку снимки прогресса.
         // Если окно свёрнуто или в фоне, о завершении сообщают итог на значке и системный звук.
         itogNaZnachke = !Application.Current.MainWindow.IsActive;
