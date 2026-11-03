@@ -4,7 +4,7 @@ using RAMChecker.Models;
 
 namespace RAMChecker.Services;
 
-public record DiagnosticProgress(string Stage, int Pass, int Passes, double Percent, TimeSpan Elapsed, long ErrorCount, byte[] Map);
+public record DiagnosticProgress(string Stage, int Pass, int Passes, double Percent, TimeSpan Elapsed, long ErrorCount, byte[]? Map);
 
 // Собственный алгоритм «Свой адрес с инверсией». Один проход состоит из трёх шагов:
 // 1) в каждую ячейку записывается значение, вычисленное из её адреса;
@@ -17,7 +17,8 @@ public static class MemoryDiagnosticService
     public const string Algorithm = "Свой адрес с инверсией";
     // Буфер делится на столько же блоков, сколько клеток на карте памяти.
     public const int MapSize = 256;
-    public const byte NotChecked = 0, Ok = 1, Error = 2;
+    // Waiting — блок уже проверялся без ошибок, но текущий проход до него ещё не дошёл.
+    public const byte NotChecked = 0, Ok = 1, Error = 2, Waiting = 3;
     private static readonly string[] Steps = ["Заполнение", "Проверка вперёд", "Проверка назад"];
 
     // Значение зависит от адреса и номера прохода. Умножение на нечётное число взаимно однозначно,
@@ -62,7 +63,8 @@ public static class MemoryDiagnosticService
         Span<uint> Block(int b) => new((void*)blocks[b], blockWords);
 
         // Не чаще пяти раз в секунду из любого потока, иначе интерфейс не успевает перерисовываться.
-        // В конце прохода отчёт отправляется всегда, чтобы журнал не пропускал проходы.
+        // В конце прохода отчёт отправляется всегда, чтобы журнал не пропускал проходы; карту он не несёт,
+        // иначе быстрые проходы всегда показывали бы полностью проверенную карту.
         void Report(bool force = false)
         {
             long now = clock.ElapsedMilliseconds, last = Interlocked.Read(ref lastReport);
@@ -70,7 +72,7 @@ public static class MemoryDiagnosticService
                 return;
             progress.Report(new(Steps[step % 3], pass, result.Passes, duration is { } d
                 ? Math.Min(100, clock.Elapsed / d * 100)
-                : (step * MapSize + done) * 100.0 / (3 * MapSize), clock.Elapsed, result.ErrorCount, (byte[])result.Map.Clone()));
+                : (step * MapSize + done) * 100.0 / (3 * MapSize), clock.Elapsed, result.ErrorCount, force ? null : (byte[])result.Map.Clone()));
         }
 
         void OnError(int block, long address, uint expected, uint actual)
@@ -100,6 +102,8 @@ public static class MemoryDiagnosticService
             do
             {
                 pass++;
+                // В начале прохода проверенные блоки снова ждут своей очереди: по карте видно, как идёт проход.
+                result.Map.AsSpan().Replace(Ok, Waiting);
                 for (step = 0; step < Steps.Length; step++)
                 {
                     done = 0;
@@ -109,8 +113,8 @@ public static class MemoryDiagnosticService
                         long start = (long)b * blockWords;
                         if (step == 0)
                             FillBlock(Block(b), start, pass);
-                        // Клетка карты зеленеет, когда её блок хотя бы раз прошёл весь проход без ошибок.
-                        else if (CheckBlock(Block(b), start, pass, step == 2, (a, e, r) => OnError(b, a, e, r)) == 0 && step == 2 && result.Map[b] == NotChecked)
+                        // Клетка карты зеленеет, когда её блок прошёл текущий проход без ошибок.
+                        else if (CheckBlock(Block(b), start, pass, step == 2, (a, e, r) => OnError(b, a, e, r)) == 0 && step == 2 && result.Map[b] != Error)
                             result.Map[b] = Ok;
                         Interlocked.Increment(ref done);
                         Report();
@@ -133,6 +137,7 @@ public static class MemoryDiagnosticService
         finally
         {
             result.ElapsedSeconds = clock.Elapsed.TotalSeconds;
+            result.Map.AsSpan().Replace(Waiting, Ok); // В итоге важно лишь, проверялся ли блок.
             foreach (nint block in blocks)
                 NativeMemory.Free((void*)block);
         }

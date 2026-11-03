@@ -51,7 +51,7 @@
             </Grid>
         </DataTemplate>
 
-        <!-- Карта памяти: 256 клеток, по одной на блок буфера. 0 — не проверен, 1 — без ошибок, 2 — ошибка. -->
+        <!-- Карта памяти: 256 клеток, по одной на блок буфера. 0 — не проверен, 1 — без ошибок, 2 — ошибка, 3 — ждёт текущего прохода. -->
         <Style x:Key="KartaPamyati" TargetType="ItemsControl">
             <Setter Property="ItemsPanel">
                 <Setter.Value>
@@ -68,6 +68,10 @@
                         <DataTemplate.Triggers>
                             <DataTrigger Binding="{Binding}" Value="1">
                                 <Setter TargetName="Kletka" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding}" Value="3">
+                                <Setter TargetName="Kletka" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                <Setter TargetName="Kletka" Property="Opacity" Value="0.35" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding}" Value="2">
                                 <Setter TargetName="Kletka" Property="Background" Value="{DynamicResource SystemFillColorCriticalBrush}" />

@@ -90,7 +90,7 @@ public class TestirovanieViewModel : NabludaemyObject
         {
             if (p.Passes > session.Passes)
                 Log($"Проход {p.Passes} завершён, ошибок: {p.ErrorCount}");
-            (Stage, Percent, PassText, Map) = (p.Stage, p.Percent, p.Pass.ToString(), p.Map);
+            (Stage, Percent, PassText, Map) = (p.Stage, p.Percent, p.Pass.ToString(), p.Map ?? Map);
             session.ElapsedSeconds = p.Elapsed.TotalSeconds;
             (session.ErrorCount, session.Passes) = (p.ErrorCount, p.Passes);
             Changed();

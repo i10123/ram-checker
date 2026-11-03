@@ -75,7 +75,7 @@
                         <StackPanel>
                             <TextBlock Text="Карта памяти" Style="{StaticResource Podzagolovok}" />
                             <ItemsControl ItemsSource="{Binding Map}" Style="{StaticResource KartaPamyati}" />
-                            <TextBlock Text="Каждая клетка — 1/256 буфера. Зелёная — проверена без ошибок, красная — найдены ошибки, серая — ещё не проверена."
+                            <TextBlock Text="Каждая клетка — 1/256 буфера. Яркая зелёная — блок прошёл текущий проход, тёмная — ждёт своей очереди, красная — найдены ошибки, серая — ещё не проверен."
                                        Style="{StaticResource Podpis}" Margin="0,12,0,0" />
                         </StackPanel>
                     </Border>
