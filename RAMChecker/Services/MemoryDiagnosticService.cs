@@ -4,14 +4,15 @@ using RAMChecker.Models;
 
 namespace RAMChecker.Services;
 
-public record DiagnosticProgress(string Stage, int Pass, int Passes, double Percent, TimeSpan Elapsed, long ErrorCount, byte[]? Map);
+public record DiagnosticProgress(string Stage, int Pass, int Passes, double Percent, TimeSpan Elapsed, long ErrorCount, long ProcessedBytes, byte[]? Map);
 
 // Собственный алгоритм «Свой адрес с инверсией». Один проход состоит из трёх шагов:
-// 1) в каждую ячейку записывается значение, вычисленное из её адреса;
+// 1) в каждую ячейку записывается значение шаблона: в нечётных проходах — вычисленное из её адреса,
+//    в чётных — шахматный шаблон, где у соседних ячеек противоположные биты;
 // 2) прямой обход: ячейка сверяется со своим значением, затем в неё пишется инверсия;
 // 3) обратный обход: сверяется инверсия, затем возвращается исходное значение.
-// Шаг 1 находит ошибки адресации (две ячейки отвечают по одному адресу),
-// шаги 2–3 — «залипшие» биты и влияние записи в соседние ячейки.
+// Шаблон адреса находит ошибки адресации (две ячейки отвечают по одному адресу),
+// шахматный — влияние соседних ячеек друг на друга; шаги 2–3 — «залипшие» биты.
 public static class MemoryDiagnosticService
 {
     public const string Algorithm = "Свой адрес с инверсией";
@@ -21,9 +22,13 @@ public static class MemoryDiagnosticService
     public const byte NotChecked = 0, Ok = 1, Error = 2, Waiting = 3;
     private static readonly string[] Steps = ["Заполнение", "Проверка вперёд", "Проверка назад"];
 
-    // Значение зависит от адреса и номера прохода. Умножение на нечётное число взаимно однозначно,
-    // поэтому соседние ячейки всегда хранят разные значения, а каждый проход — новый рисунок битов.
-    public static uint Pattern(long address, int pass) => unchecked((uint)address * 0x9E3779B1u + (uint)pass * 0x7F4A7C15u);
+    // Шаблон адреса: умножение на нечётное число взаимно однозначно, поэтому соседние ячейки хранят разные значения.
+    // Шахматный шаблон: 1010… и 0101… чередуются через ячейку и меняются местами с каждым чётным проходом.
+    public static uint Pattern(long address, int pass) => pass % 2 == 1
+        ? unchecked((uint)address * 0x9E3779B1u + (uint)pass * 0x7F4A7C15u)
+        : ((address + pass / 2) & 1) == 0 ? 0xAAAAAAAAu : 0x55555555u;
+
+    public static string PatternName(int pass) => pass % 2 == 1 ? "Свой адрес" : "Шахматный шаблон";
 
     public static void FillBlock(Span<uint> block, long start, int pass)
     {
@@ -59,6 +64,7 @@ public static class MemoryDiagnosticService
         var blocks = new nint[MapSize];
         int blockWords = (int)(bytes / 4 / MapSize);
         int pass = 0, step = 0, done = 0;
+        long blockSteps = 0; // сколько раз блоки уже записаны или проверены — для скорости проверки
         long lastReport = -1000;
         Span<uint> Block(int b) => new((void*)blocks[b], blockWords);
 
@@ -70,9 +76,10 @@ public static class MemoryDiagnosticService
             long now = clock.ElapsedMilliseconds, last = Interlocked.Read(ref lastReport);
             if (!force && (now - last < 200 || Interlocked.CompareExchange(ref lastReport, now, last) != last))
                 return;
-            progress.Report(new(Steps[step % 3], pass, result.Passes, duration is { } d
+            progress.Report(new($"{PatternName(pass)} · {Steps[step % 3]}", pass, result.Passes, duration is { } d
                 ? Math.Min(100, clock.Elapsed / d * 100)
-                : (step * MapSize + done) * 100.0 / (3 * MapSize), clock.Elapsed, result.ErrorCount, force ? null : (byte[])result.Map.Clone()));
+                : (step * MapSize + done) * 100.0 / (3 * MapSize), clock.Elapsed, result.ErrorCount,
+                Interlocked.Read(ref blockSteps) * blockWords * 4, force ? null : (byte[])result.Map.Clone()));
         }
 
         void OnError(int block, long address, uint expected, uint actual)
@@ -82,7 +89,7 @@ public static class MemoryDiagnosticService
                 result.ErrorCount++;
                 result.Map[block] = Error;
                 if (result.Errors.Count < 1000)
-                    result.Errors.Add(new(address * 4, expected, actual, Steps[step], pass));
+                    result.Errors.Add(new(address * 4, expected, actual, $"{PatternName(pass)} · {Steps[step]}", pass));
             }
             if (stopOnFirstError)
                 stop.Cancel();
@@ -117,6 +124,7 @@ public static class MemoryDiagnosticService
                         else if (CheckBlock(Block(b), start, pass, step == 2, (a, e, r) => OnError(b, a, e, r)) == 0 && step == 2 && result.Map[b] != Error)
                             result.Map[b] = Ok;
                         Interlocked.Increment(ref done);
+                        Interlocked.Increment(ref blockSteps);
                         Report();
                     });
                 }
