@@ -57,8 +57,11 @@ public class TestirovanieViewModel : NabludaemyObject
     public Komanda StartCommand { get; }
     public Komanda StopCommand { get; }
 
-    // Резерв для Windows: проверять можно только часть свободной памяти.
-    public double MaxMemoryMiB => glavnaya.Obzor.Memory is { } m ? Math.Max(64, MemorySnapshot.SafeTestBytes(m) >> 20) : 64;
+    // Резерв для Windows: проверять можно только часть свободной памяти. Безопасный объём может быть и меньше
+    // минимальных 64 МБ — тогда запуск запрещён, а ползунку всё равно нужен максимум не меньше минимума.
+    private static double SafeMiB(MemorySnapshot? m) => m is null ? 0 : MemorySnapshot.SafeTestBytes(m) >> 20;
+    public double MaxMemoryMiB => Math.Max(64, SafeMiB(glavnaya.Obzor.Memory));
+    public bool MemoryShort => IsIdle && MemoryMiB > SafeMiB(glavnaya.Obzor.Memory);
 
     // Объём кратен 16 МБ, чтобы буфер делился на 256 равных блоков карты.
     public double MemoryMiB
@@ -75,7 +78,7 @@ public class TestirovanieViewModel : NabludaemyObject
     {
         this.glavnaya = glavnaya;
         // Задача запуска запоминается, чтобы при закрытии окна дождаться сохранения результата.
-        StartCommand = new(() => running = StartAsync(), () => !IsRunning && !glavnaya.Obzor.BenchmarkRunning && MemoryMiB <= MaxMemoryMiB);
+        StartCommand = new(() => running = StartAsync(), () => !IsRunning && !glavnaya.Obzor.BenchmarkRunning && !MemoryShort);
         StopCommand = new(() => cancellation?.Cancel(), () => IsRunning);
     }
 
@@ -87,7 +90,7 @@ public class TestirovanieViewModel : NabludaemyObject
             lastSaved = (long)active.ElapsedSeconds;
             glavnaya.SaveHistory();
         }
-        Changed(nameof(MaxMemoryMiB)); // Свободная память меняется, вместе с ней — допустимый объём проверки.
+        Changed(nameof(MaxMemoryMiB), nameof(MemoryShort)); // Свободная память меняется, вместе с ней — допустимый объём проверки.
     }
 
     public async Task StopAsync()
@@ -108,12 +111,19 @@ public class TestirovanieViewModel : NabludaemyObject
             $"Проверка займёт {TestMemoryText} и загрузит все ядра процессора. Компьютер может временно замедлиться, " +
             "сохраните открытые документы. Продолжить?", "Большая нагрузка", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
+        // Пока был открыт вопрос, свободной памяти могло стать меньше, поэтому перед выделением буфера проверяем снова.
+        if (MemoryMiB > SafeMiB(MemoryMonitor.Read()))
+        {
+            MessageBox.Show("Свободной памяти стало меньше, чем нужно для проверки с резервом для Windows. Уменьшите объём.",
+                "Недостаточно памяти", MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
         var session = new DiagnosticResult
         {
             Mode = Modes[ModeIndex].Split(' ')[0],
             RequestedBytes = (long)MemoryMiB << 20,
             Configuration = string.Join("\n", glavnaya.Obzor.ModulesMemory.Select(m =>
-                $"{m.RAM_slot}: {m.RAM_maker} {m.RAM_partNumber}, {m.size_GB} ГБ, {m.RAM_speed}, тайминги {m.RAM_timings}"))
+                $"{m.RAM_slot}: {m.RAM_maker} {m.RAM_partNumber}, {m.size_GB} ГБ, {m.RAM_speed}, тайминги {m.RAM_timings}, паспорт SPD: {m.RAM_spd}"))
         };
         (lastSaved, Itog) = (0, null);
         Events.Clear();

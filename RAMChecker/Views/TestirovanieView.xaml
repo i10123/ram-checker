@@ -23,6 +23,9 @@
                             </TextBlock>
                             <Slider IsEnabled="{Binding IsIdle}" Minimum="64" Maximum="{Binding MaxMemoryMiB, Mode=OneWay}" Value="{Binding MemoryMiB}"
                                     SmallChange="16" LargeChange="256" Margin="0,4,0,12" />
+                            <TextBlock Text="Недостаточно свободной памяти: Windows нужен резерв не меньше 1 ГБ или 10 % памяти."
+                                       Visibility="{Binding MemoryShort, Converter={StaticResource Vidimost}}" Style="{StaticResource Podpis}"
+                                       TextWrapping="Wrap" Margin="0,0,0,12" />
                             <CheckBox Content="Остановить при обнаружении ошибки" IsChecked="{Binding StopOnError}" IsEnabled="{Binding IsIdle}" Margin="0,0,0,16" />
                             <UniformGrid Columns="2">
                                 <Button Content="Запустить" Command="{Binding StartCommand}" Style="{DynamicResource AccentButtonStyle}"
