@@ -112,15 +112,17 @@ public static class MemoryDiagnosticService
         int pass = 0, step = 0, done = 0, sentErrors = 0;
         var errorsLock = new Lock(); // System.Threading.Lock (.NET 9) — отдельный объект только для синхронизации
         long blockSteps = 0; // сколько раз блоки уже записаны или проверены — для скорости проверки
-        long lastReport = -1000;
+        long lastReport = -1000, mapErrors = 0; // mapErrors — счётчик ошибок на момент последнего снимка карты
         Span<uint> Block(int b) => new((void*)blocks[b], blockWords);
 
         // Не чаще пяти раз в секунду из любого потока, иначе интерфейс не успевает перерисовываться.
-        // В конце прохода отчёт отправляется всегда, чтобы журнал не пропускал проходы; карту он не несёт,
+        // В конце прохода отчёт отправляется всегда, чтобы журнал не пропускал проходы; карту он обычно не несёт,
         // иначе быстрые проходы всегда показывали бы полностью проверенную карту.
         // Счётчик, карта и список ошибок копируются под той же блокировкой, что и в OnError, поэтому в одном отчёте
         // они согласованы. Отчёт отправляется внутри блокировки, чтобы отчёты разных потоков не обгоняли друг друга.
-        // Список ошибок копируется, только когда в нём появились новые записи.
+        // Список ошибок копируется, только когда в нём появились новые записи. Если с прошлого снимка карты
+        // появились ошибки, карта отправляется и в конце прохода — иначе автосохранение записало бы новые ошибки
+        // вместе со старой картой без красных клеток.
         void Report(bool force = false)
         {
             long now = clock.ElapsedMilliseconds, last = Interlocked.Read(ref lastReport);
@@ -129,11 +131,12 @@ public static class MemoryDiagnosticService
             lock (errorsLock)
             {
                 MemoryError[]? errors = result.Errors.Count == sentErrors ? null : [.. result.Errors];
-                sentErrors = result.Errors.Count;
+                byte[]? map = force && result.ErrorCount == mapErrors ? null : (byte[])result.Map.Clone();
+                (sentErrors, mapErrors) = (result.Errors.Count, map is null ? mapErrors : result.ErrorCount);
                 progress.Report(new($"{PatternName(pass)} · {Steps[step % 3]}", pass, result.Passes, duration is { } d
                     ? Math.Min(100, clock.Elapsed / d * 100)
                     : (step * MapSize + done) * 100.0 / (3 * MapSize), clock.Elapsed, result.ErrorCount,
-                    Interlocked.Read(ref blockSteps) * blockWords * 4, force ? null : (byte[])result.Map.Clone(), errors));
+                    Interlocked.Read(ref blockSteps) * blockWords * 4, map, errors));
             }
         }
 
