@@ -7,6 +7,9 @@
         <UseWPF>true</UseWPF>
         <AssemblyName>RAMChecker</AssemblyName>
         <RootNamespace>RAMChecker</RootNamespace>
+        <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
+        <!-- Буфер проверки выделяется вне сборщика мусора через указатели. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <!-- Тема Fluent встроена в WPF, но помечена как предварительная. -->
         <NoWarn>$(NoWarn);WPF0001</NoWarn>
     </PropertyGroup>
@@ -14,5 +17,6 @@
         <PackageReference Include="System.Management" Version="10.0.12" />
         <!-- Подписанные модули драйвера PawnIO для шины SMBus (AMD и Intel). -->
         <EmbeddedResource Include="Drivers\*.bin" />
+        <Resource Include="Assets\logo.ico" />
     </ItemGroup>
 </Project>

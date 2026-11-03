@@ -9,8 +9,8 @@ public record MemorySnapshot(ulong Total, ulong Available, ulong? Committed, ulo
     public double Load => Total == 0 ? 0 : Used * 100d / Total;
     public static string Format(ulong bytes) => bytes < 1073741824
         ? $"{bytes / 1048576d:0.#} МБ" : $"{bytes / 1073741824d:0.0} ГБ";
-    public static long SafeTestBytes(MemorySnapshot s) => (long)Math.Max(0d,
-        Math.Min(s.Available * .75, s.Available - Math.Max(2d * 1073741824, s.Total * .15)));
+    // Windows и другим программам оставляем не меньше 1 ГБ или 10 % памяти, иначе страницы буфера уйдут в файл подкачки.
+    public static long SafeTestBytes(MemorySnapshot s) => (long)Math.Max(0d, s.Available - Math.Max(1073741824d, s.Total * .1));
 }
 
 public static class MemoryMonitor

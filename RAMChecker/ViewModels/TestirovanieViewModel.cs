@@ -28,7 +28,6 @@ public class TestirovanieViewModel : NabludaemyObject
     public string ElapsedText => active?.DurationText ?? "00:00:00";
     public string ErrorCountText => (active?.ErrorCount ?? 0).ToString();
     public string TestMemoryText => $"{MemoryMiB:0} МБ";
-    public string Algorithm => MemoryDiagnosticService.Algorithm;
     public Komanda StartCommand { get; }
     public Komanda StopCommand { get; }
 
@@ -89,11 +88,11 @@ public class TestirovanieViewModel : NabludaemyObject
         // Сервис сообщает прогресс из фонового потока, Progress переносит его в поток интерфейса.
         var progress = new Progress<DiagnosticProgress>(p =>
         {
-            if (p.Pass.ToString() != PassText)
-                Log($"Проход {p.Pass}, ошибок: {p.ErrorCount}");
+            if (p.Passes > session.Passes)
+                Log($"Проход {p.Passes} завершён, ошибок: {p.ErrorCount}");
             (Stage, Percent, PassText, Map) = (p.Stage, p.Percent, p.Pass.ToString(), p.Map);
             session.ElapsedSeconds = p.Elapsed.TotalSeconds;
-            session.ErrorCount = p.ErrorCount;
+            (session.ErrorCount, session.Passes) = (p.ErrorCount, p.Passes);
             Changed();
         });
         var task = MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], glavnaya.StopOnError, progress, cancellation.Token);

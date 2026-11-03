@@ -11,26 +11,42 @@
                 </Grid.ColumnDefinitions>
 
                 <!-- Параметры проверки. -->
-                <Border Style="{StaticResource Kartochka}" VerticalAlignment="Top">
-                    <StackPanel>
-                        <TextBlock Text="Параметры" Style="{StaticResource Podzagolovok}" />
-                        <TextBlock Text="Режим" Style="{StaticResource Podpis}" />
-                        <ComboBox ItemsSource="{Binding Modes}" SelectedIndex="{Binding ModeIndex}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch" Margin="0,4,0,16" />
-                        <TextBlock Style="{StaticResource Podpis}">
-                            <Run Text="Объём проверки:" />
-                            <Run Text="{Binding TestMemoryText, Mode=OneWay}" />
-                        </TextBlock>
-                        <Slider IsEnabled="{Binding IsIdle}" Minimum="64" Maximum="{Binding MaxMemoryMiB, Mode=OneWay}" Value="{Binding MemoryMiB}"
-                                SmallChange="16" LargeChange="256" Margin="0,4,0,16" />
-                        <TextBlock Text="Алгоритм" Style="{StaticResource Podpis}" />
-                        <TextBlock Text="{Binding Algorithm}" Margin="0,4,0,20" />
-                        <UniformGrid Columns="2">
-                            <Button Content="Запустить" Command="{Binding StartCommand}" Style="{DynamicResource AccentButtonStyle}"
-                                    HorizontalAlignment="Stretch" Margin="0,0,6,0" />
-                            <Button Content="Остановить" Command="{Binding StopCommand}" HorizontalAlignment="Stretch" Margin="6,0,0,0" />
-                        </UniformGrid>
-                    </StackPanel>
-                </Border>
+                <StackPanel>
+                    <Border Style="{StaticResource Kartochka}">
+                        <StackPanel>
+                            <TextBlock Text="Параметры" Style="{StaticResource Podzagolovok}" />
+                            <TextBlock Text="Режим" Style="{StaticResource Podpis}" />
+                            <ComboBox ItemsSource="{Binding Modes}" SelectedIndex="{Binding ModeIndex}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch" Margin="0,4,0,16" />
+                            <TextBlock Style="{StaticResource Podpis}">
+                                <Run Text="Объём проверки:" />
+                                <Run Text="{Binding TestMemoryText, Mode=OneWay}" />
+                            </TextBlock>
+                            <Slider IsEnabled="{Binding IsIdle}" Minimum="64" Maximum="{Binding MaxMemoryMiB, Mode=OneWay}" Value="{Binding MemoryMiB}"
+                                    SmallChange="16" LargeChange="256" Margin="0,4,0,20" />
+                            <UniformGrid Columns="2">
+                                <Button Content="Запустить" Command="{Binding StartCommand}" Style="{DynamicResource AccentButtonStyle}"
+                                        HorizontalAlignment="Stretch" Margin="0,0,6,0" />
+                                <Button Content="Остановить" Command="{Binding StopCommand}" HorizontalAlignment="Stretch" Margin="6,0,0,0" />
+                            </UniformGrid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Журнал: компактные строки, новые сверху. -->
+                    <Border Style="{StaticResource Kartochka}">
+                        <StackPanel>
+                            <TextBlock Text="Журнал" Style="{StaticResource Podzagolovok}" />
+                            <ScrollViewer Height="260" VerticalScrollBarVisibility="Auto">
+                                <ItemsControl ItemsSource="{Binding Events}">
+                                    <ItemsControl.ItemTemplate>
+                                        <DataTemplate>
+                                            <TextBlock Text="{Binding}" FontSize="13" Margin="0,2" TextWrapping="Wrap" />
+                                        </DataTemplate>
+                                    </ItemsControl.ItemTemplate>
+                                </ItemsControl>
+                            </ScrollViewer>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
 
                 <StackPanel Grid.Column="1">
                     <!-- Ход проверки. -->
@@ -59,15 +75,8 @@
                         <StackPanel>
                             <TextBlock Text="Карта памяти" Style="{StaticResource Podzagolovok}" />
                             <ItemsControl ItemsSource="{Binding Map}" Style="{StaticResource KartaPamyati}" />
-                            <TextBlock Text="Каждая клетка — 1/256 буфера. Зелёная — проверена, красная — найдены ошибки, серая — ожидает проверки."
+                            <TextBlock Text="Каждая клетка — 1/256 буфера. Зелёная — проверена без ошибок, красная — найдены ошибки, серая — ещё не проверена."
                                        Style="{StaticResource Podpis}" Margin="0,12,0,0" />
-                        </StackPanel>
-                    </Border>
-
-                    <Border Style="{StaticResource Kartochka}">
-                        <StackPanel>
-                            <TextBlock Text="Журнал" Style="{StaticResource Podzagolovok}" />
-                            <ListBox ItemsSource="{Binding Events}" Height="180" />
                         </StackPanel>
                     </Border>
                 </StackPanel>

@@ -1,9 +1,10 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using RAMChecker.Models;
 
 namespace RAMChecker.Services;
 
-public record DiagnosticProgress(string Stage, int Pass, double Percent, TimeSpan Elapsed, long ErrorCount, byte[] Map);
+public record DiagnosticProgress(string Stage, int Pass, int Passes, double Percent, TimeSpan Elapsed, long ErrorCount, byte[] Map);
 
 // Собственный алгоритм «Свой адрес с инверсией». Один проход состоит из трёх шагов:
 // 1) в каждую ячейку записывается значение, вычисленное из её адреса;
@@ -23,14 +24,14 @@ public static class MemoryDiagnosticService
     // поэтому соседние ячейки всегда хранят разные значения, а каждый проход — новый рисунок битов.
     public static uint Pattern(long address, int pass) => unchecked((uint)address * 0x9E3779B1u + (uint)pass * 0x7F4A7C15u);
 
-    public static void FillBlock(uint[] block, long start, int pass)
+    public static void FillBlock(Span<uint> block, long start, int pass)
     {
         for (int i = 0; i < block.Length; i++)
             block[i] = Pattern(start + i, pass);
     }
 
     // Сверяет блок с ожидаемыми значениями и записывает инверсию. Возвращает число ошибок.
-    public static int CheckBlock(uint[] block, long start, int pass, bool backward, Action<long, uint, uint> onError)
+    public static int CheckBlock(Span<uint> block, long start, int pass, bool backward, Action<long, uint, uint> onError)
     {
         int errors = 0;
         for (int k = 0; k < block.Length; k++)
@@ -47,24 +48,27 @@ public static class MemoryDiagnosticService
         return errors;
     }
 
-    public static Task<DiagnosticResult> RunAsync(long bytes, TimeSpan? duration, bool stopOnFirstError,
+    // Буфер выделяется вне сборщика мусора: после проверки память сразу возвращается Windows.
+    public static unsafe Task<DiagnosticResult> RunAsync(long bytes, TimeSpan? duration, bool stopOnFirstError,
         IProgress<DiagnosticProgress> progress, CancellationToken token) => Task.Run(() =>
     {
         var result = new DiagnosticResult { RequestedBytes = bytes };
         var clock = Stopwatch.StartNew();
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
-        var blocks = new uint[MapSize][];
+        var blocks = new nint[MapSize];
         int blockWords = (int)(bytes / 4 / MapSize);
         int pass = 0, step = 0, done = 0;
         long lastReport = -1000;
+        Span<uint> Block(int b) => new((void*)blocks[b], blockWords);
 
         // Не чаще пяти раз в секунду из любого потока, иначе интерфейс не успевает перерисовываться.
-        void Report()
+        // В конце прохода отчёт отправляется всегда, чтобы журнал не пропускал проходы.
+        void Report(bool force = false)
         {
             long now = clock.ElapsedMilliseconds, last = Interlocked.Read(ref lastReport);
-            if (now - last < 200 || Interlocked.CompareExchange(ref lastReport, now, last) != last)
+            if (!force && (now - last < 200 || Interlocked.CompareExchange(ref lastReport, now, last) != last))
                 return;
-            progress.Report(new(Steps[step], pass, duration is { } d
+            progress.Report(new(Steps[step % 3], pass, result.Passes, duration is { } d
                 ? Math.Min(100, clock.Elapsed / d * 100)
                 : (step * MapSize + done) * 100.0 / (3 * MapSize), clock.Elapsed, result.ErrorCount, (byte[])result.Map.Clone()));
         }
@@ -87,7 +91,7 @@ public static class MemoryDiagnosticService
             for (int b = 0; b < MapSize; b++)
             {
                 stop.Token.ThrowIfCancellationRequested();
-                blocks[b] = new uint[blockWords];
+                blocks[b] = (nint)NativeMemory.Alloc((nuint)blockWords * 4);
                 result.AllocatedBytes += blockWords * 4L;
             }
             // Блоки обрабатываются параллельно на всех ядрах; шаги идут по всему буферу,
@@ -99,20 +103,21 @@ public static class MemoryDiagnosticService
                 for (step = 0; step < Steps.Length; step++)
                 {
                     done = 0;
-                    Report();
                     Parallel.For(0, MapSize, options, k =>
                     {
                         int b = step == 2 ? MapSize - 1 - k : k;
                         long start = (long)b * blockWords;
                         if (step == 0)
-                            FillBlock(blocks[b], start, pass);
-                        else if (CheckBlock(blocks[b], start, pass, step == 2, (a, e, r) => OnError(b, a, e, r)) == 0 && result.Map[b] != Error)
-                            result.Map[b] = step == 2 ? Ok : NotChecked;
+                            FillBlock(Block(b), start, pass);
+                        // Клетка карты зеленеет, когда её блок хотя бы раз прошёл весь проход без ошибок.
+                        else if (CheckBlock(Block(b), start, pass, step == 2, (a, e, r) => OnError(b, a, e, r)) == 0 && step == 2 && result.Map[b] == NotChecked)
+                            result.Map[b] = Ok;
                         Interlocked.Increment(ref done);
                         Report();
                     });
                 }
                 result.Passes = pass;
+                Report(force: true);
             } while (duration is not { } limit || clock.Elapsed < limit);
             result.Status = "Completed";
         }
@@ -128,8 +133,8 @@ public static class MemoryDiagnosticService
         finally
         {
             result.ElapsedSeconds = clock.Elapsed.TotalSeconds;
-            Array.Clear(blocks);
-            GC.Collect();
+            foreach (nint block in blocks)
+                NativeMemory.Free((void*)block);
         }
         return result;
     });
