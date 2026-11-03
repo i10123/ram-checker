@@ -16,7 +16,7 @@ public enum DiagnosticStatus
     Interrupted // приложение закрылось во время проверки, в истории промежуточный результат
 }
 
-// Одна найденная ошибка: смещение в буфере, ожидаемое и прочитанное значения.
+// Одна найденная ошибка: смещение в буфере программы (не физический адрес), ожидаемое и прочитанное значения.
 public record MemoryError(long Offset, uint Expected, uint Actual, string Stage, int Pass)
 {
     public string OffsetText => $"0x{Offset:X10}";
@@ -45,6 +45,7 @@ public class DiagnosticResult
     public string Mode { get; set; } = "Быстрая";
     public DiagnosticStatus Status { get; set; } = DiagnosticStatus.Running;
     public long RequestedBytes { get; set; }
+    // Сколько удалось выделить; при сбое выделения меньше запрошенного. Выделенный не значит проверенный.
     public long AllocatedBytes { get; set; }
     public long ErrorCount { get; set; }
     public double ElapsedSeconds { get; set; }
@@ -57,6 +58,10 @@ public class DiagnosticResult
     [JsonIgnore] public string StartedText => Started.ToLocalTime().ToString("dd MMMM yyyy, HH:mm");
     [JsonIgnore] public string DurationText => TimeSpan.FromSeconds(ElapsedSeconds).ToString(@"hh\:mm\:ss");
     [JsonIgnore] public string MemoryText => MemorySnapshot.Format((ulong)RequestedBytes);
+    // Объём, прошедший хотя бы один полный проход: после первого прохода — весь буфер, до него — только
+    // зелёные блоки карты. При ранней остановке запрошенный объём проверен не весь.
+    [JsonIgnore] public long CheckedBytes => RequestedBytes / Map.Length * (Passes > 0 ? Map.Length : Map.Count(s => s == MemoryDiagnosticService.Ok));
+    [JsonIgnore] public string CheckedText => MemorySnapshot.Format((ulong)CheckedBytes);
     [JsonIgnore] public string Description => $"{Mode} · {DurationText} · {MemoryText}";
     [JsonIgnore] public bool HasErrors => ErrorCount > 0;
     // Уровень для цвета в списке: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки.
@@ -90,7 +95,7 @@ public class DiagnosticResult
     public string Recommendation => Status switch
     {
         _ when ErrorCount > 0 => "Сохраните отчёт. Если включён разгон или XMP, верните штатные настройки BIOS и повторите проверку. Если ошибки остаются, проверяйте планки по одной.",
-        DiagnosticStatus.Completed => "Ошибок не найдено. При редких сбоях запустите полную или циклическую проверку на большем объёме.",
+        DiagnosticStatus.Completed => "В проверенном объёме ошибок не найдено. При редких сбоях запустите полную или циклическую проверку на большем объёме.",
         DiagnosticStatus.Failed => "Уменьшите объём проверки и повторите запуск.",
         _ => "Проверка не завершена, по ней нельзя судить об исправности памяти."
     };

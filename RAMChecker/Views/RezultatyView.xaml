@@ -67,7 +67,7 @@
                 <DataGrid ItemsSource="{Binding Errors}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
                           Visibility="{Binding HasErrors, Converter={StaticResource Vidimost}}">
                     <DataGrid.Columns>
-                        <DataGridTextColumn Header="Смещение" Binding="{Binding OffsetText}" />
+                        <DataGridTextColumn Header="Смещение в буфере" Binding="{Binding OffsetText}" />
                         <DataGridTextColumn Header="Ожидалось" Binding="{Binding ExpectedText}" />
                         <DataGridTextColumn Header="Прочитано" Binding="{Binding ActualText}" />
                         <DataGridTextColumn Header="Шаг" Binding="{Binding Stage}" />
