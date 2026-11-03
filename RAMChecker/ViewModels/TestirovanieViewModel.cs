@@ -1,4 +1,5 @@
 using System.Collections.ObjectModel;
+using System.Windows;
 using RAMChecker.Helpers;
 using RAMChecker.Models;
 using RAMChecker.Services;
@@ -8,7 +9,7 @@ namespace RAMChecker.ViewModels;
 // Страница «Тестирование»: выбор режима и объёма, ход проверки и карта памяти.
 public class TestirovanieViewModel : NabludaemyObject
 {
-    private static readonly TimeSpan?[] Durations = [TimeSpan.FromMinutes(10), TimeSpan.FromHours(2), null];
+    private static readonly TimeSpan?[] Durations = [TimeSpan.FromMinutes(10), TimeSpan.FromHours(2), null, null];
     private readonly MainViewModel glavnaya;
     private CancellationTokenSource? cancellation;
     private Task? running;
@@ -16,8 +17,9 @@ public class TestirovanieViewModel : NabludaemyObject
     private double memoryMiB = 512;
     private long lastSaved;
 
-    public string[] Modes { get; } = ["Быстрая · 10 минут", "Полная · 2 часа", "Циклическая · до остановки"];
+    public string[] Modes { get; } = ["Быстрая · 10 минут", "Полная · 2 часа", "Циклическая · до остановки", "Стресс · вся свободная память"];
     public int ModeIndex { get; set; }
+    public bool StopOnError { get; set; }
     public ObservableCollection<string> Events { get; } = [];
     public string Stage { get; private set; } = "Готово к запуску";
     public double Percent { get; private set; }
@@ -60,7 +62,7 @@ public class TestirovanieViewModel : NabludaemyObject
             lastSaved = (long)active.ElapsedSeconds;
             glavnaya.SaveHistory();
         }
-        Changed(); // Свободная память меняется, вместе с ней — допустимый объём проверки.
+        Changed(nameof(MaxMemoryMiB)); // Свободная память меняется, вместе с ней — допустимый объём проверки.
     }
 
     public async Task StopAsync()
@@ -72,6 +74,14 @@ public class TestirovanieViewModel : NabludaemyObject
 
     private async Task StartAsync()
     {
+        // Стресс-режим берёт весь допустимый объём, чтобы нагрузить память и все ядра до предела.
+        if (ModeIndex == 3)
+            MemoryMiB = MaxMemoryMiB;
+        // Предупреждение об опасной операции: большой буфер может замедлить Windows и другие программы.
+        if ((ModeIndex == 3 || MemoryMiB * 2 > MaxMemoryMiB) && MessageBox.Show(
+            $"Проверка займёт {TestMemoryText} и загрузит все ядра процессора. Компьютер может временно замедлиться, " +
+            "сохраните открытые документы. Продолжить?", "Большая нагрузка", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            return;
         var session = active = new DiagnosticResult
         {
             Mode = Modes[ModeIndex].Split(' ')[0],
@@ -95,7 +105,7 @@ public class TestirovanieViewModel : NabludaemyObject
             (session.ErrorCount, session.Passes) = (p.ErrorCount, p.Passes);
             Changed();
         });
-        var task = MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], glavnaya.StopOnError, progress, cancellation.Token);
+        var task = MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], StopOnError, progress, cancellation.Token);
         running = task;
         var result = await task;
         result.Started = session.Started;
@@ -108,6 +118,7 @@ public class TestirovanieViewModel : NabludaemyObject
         (Stage, Map, Percent, active) = (result.StatusText, result.Map, result.Status == "Completed" ? 100 : Percent, null);
         cancellation.Dispose();
         cancellation = null;
+        MemoryMonitor.ReturnFreeMemory(); // Убираем накопившиеся за проверку снимки прогресса.
         Changed();
     }
 
