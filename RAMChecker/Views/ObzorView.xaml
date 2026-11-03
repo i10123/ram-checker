@@ -1,0 +1,99 @@
+<UserControl x:Class="RAMChecker.Views.ObzorView"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Margin="16,24,16,8">
+            <TextBlock Text="Обзор" Style="{StaticResource Zagolovok}" />
+
+            <!-- Сводка по памяти системы. -->
+            <UniformGrid Columns="4">
+                <Border Style="{StaticResource Kartochka}">
+                    <StackPanel>
+                        <TextBlock Text="Всего памяти" Style="{StaticResource Podpis}" />
+                        <TextBlock Text="{Binding TotalText}" Style="{StaticResource Chislo}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Kartochka}">
+                    <StackPanel>
+                        <TextBlock Text="Используется" Style="{StaticResource Podpis}" />
+                        <TextBlock Text="{Binding UsedText}" Style="{StaticResource Chislo}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Kartochka}">
+                    <StackPanel>
+                        <TextBlock Text="Доступно" Style="{StaticResource Podpis}" />
+                        <TextBlock Text="{Binding AvailableText}" Style="{StaticResource Chislo}" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Kartochka}">
+                    <StackPanel>
+                        <TextBlock Text="Модули" Style="{StaticResource Podpis}" />
+                        <TextBlock Text="{Binding ModulesText}" Style="{StaticResource Chislo}" />
+                    </StackPanel>
+                </Border>
+            </UniformGrid>
+
+            <Grid>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+
+                <!-- Паспорт выбранного модуля. -->
+                <Border Style="{StaticResource Kartochka}">
+                    <StackPanel>
+                        <TextBlock Text="Модуль памяти" Style="{StaticResource Podzagolovok}" />
+                        <ComboBox ItemsSource="{Binding ModulesMemory}" SelectedItem="{Binding SelectedModule}"
+                                  DisplayMemberPath="DisplayName" Margin="0,0,0,12" HorizontalAlignment="Stretch" />
+                        <ItemsControl ItemsSource="{Binding ModuleRows}" ItemTemplate="{StaticResource StrokaTablicy}" />
+                        <TextBlock Text="{Binding SpdStatus}" Style="{StaticResource Podpis}" Margin="0,12,0,0" />
+                        <Button Content="Перезапустить от администратора" Command="{Binding AdministratorCommand}" Margin="0,12,0,0"
+                                Visibility="{Binding NeedsAdministrator, Converter={StaticResource Vidimost}}" />
+                    </StackPanel>
+                </Border>
+
+                <StackPanel Grid.Column="1">
+                    <!-- График загрузки памяти за последние 60 измерений. -->
+                    <Border Style="{StaticResource Kartochka}">
+                        <StackPanel>
+                            <TextBlock Text="Загрузка памяти" Style="{StaticResource Podzagolovok}" />
+                            <Viewbox Stretch="Fill" Height="140">
+                                <Canvas Width="600" Height="120" ClipToBounds="True">
+                                    <Line X1="0" Y1="60" X2="600" Y2="60" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="4 4" />
+                                    <Polyline Points="{Binding UsagePoints}" Stroke="{DynamicResource AccentFillColorDefaultBrush}" StrokeThickness="2.5" />
+                                </Canvas>
+                            </Viewbox>
+                            <TextBlock Text="0–100 %, последние 60 измерений" Style="{StaticResource Podpis}" Margin="0,8,0,0" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Замер скорости: столбцы пропорциональны лучшему результату. -->
+                    <Border Style="{StaticResource Kartochka}">
+                        <StackPanel>
+                            <TextBlock Text="Скорость памяти" Style="{StaticResource Podzagolovok}" />
+                            <ItemsControl ItemsSource="{Binding BenchmarkBars}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="0,4">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="110" />
+                                                <ColumnDefinition Width="210" />
+                                                <ColumnDefinition />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock Text="{Binding Name}" Style="{StaticResource Podpis}" />
+                                            <Border Grid.Column="1" Width="{Binding Width}" Height="16" CornerRadius="4"
+                                                    HorizontalAlignment="Left" Background="{DynamicResource AccentFillColorDefaultBrush}" />
+                                            <TextBlock Grid.Column="2" Text="{Binding Value}" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding BenchmarkText}" Margin="0,8,0,12" />
+                            <Button Content="Измерить скорость" Command="{Binding BenchmarkCommand}" Style="{DynamicResource AccentButtonStyle}" />
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+    </ScrollViewer>
+</UserControl>

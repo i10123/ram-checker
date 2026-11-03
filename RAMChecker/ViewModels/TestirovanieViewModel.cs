@@ -1,0 +1,121 @@
+using System.Collections.ObjectModel;
+using RAMChecker.Helpers;
+using RAMChecker.Models;
+using RAMChecker.Services;
+
+namespace RAMChecker.ViewModels;
+
+// Страница «Тестирование»: выбор режима и объёма, ход проверки и карта памяти.
+public class TestirovanieViewModel : NabludaemyObject
+{
+    private static readonly TimeSpan?[] Durations = [TimeSpan.FromMinutes(10), TimeSpan.FromHours(2), null];
+    private readonly MainViewModel glavnaya;
+    private CancellationTokenSource? cancellation;
+    private Task? running;
+    private DiagnosticResult? active;
+    private double memoryMiB = 512;
+    private long lastSaved;
+
+    public string[] Modes { get; } = ["Быстрая · 10 минут", "Полная · 2 часа", "Циклическая · до остановки"];
+    public int ModeIndex { get; set; }
+    public ObservableCollection<string> Events { get; } = [];
+    public string Stage { get; private set; } = "Готово к запуску";
+    public double Percent { get; private set; }
+    public string PassText { get; private set; } = "—";
+    public byte[] Map { get; private set; } = new byte[MemoryDiagnosticService.MapSize];
+    public bool IsRunning => cancellation is not null;
+    public bool IsIdle => !IsRunning;
+    public string ElapsedText => active?.DurationText ?? "00:00:00";
+    public string ErrorCountText => (active?.ErrorCount ?? 0).ToString();
+    public string TestMemoryText => $"{MemoryMiB:0} МБ";
+    public string Algorithm => MemoryDiagnosticService.Algorithm;
+    public Komanda StartCommand { get; }
+    public Komanda StopCommand { get; }
+
+    // Резерв для Windows: проверять можно только часть свободной памяти.
+    public double MaxMemoryMiB => glavnaya.Obzor.Memory is { } m ? Math.Max(64, MemorySnapshot.SafeTestBytes(m) >> 20) : 64;
+
+    // Объём кратен 16 МБ, чтобы буфер делился на 256 равных блоков карты.
+    public double MemoryMiB
+    {
+        get => memoryMiB;
+        set
+        {
+            memoryMiB = Math.Max(64, Math.Floor(value / 16) * 16);
+            Changed();
+        }
+    }
+
+    public TestirovanieViewModel(MainViewModel glavnaya)
+    {
+        this.glavnaya = glavnaya;
+        StartCommand = new(async () => await StartAsync(), () => !IsRunning && !glavnaya.Obzor.BenchmarkRunning && MemoryMiB <= MaxMemoryMiB);
+        StopCommand = new(() => cancellation?.Cancel(), () => IsRunning);
+    }
+
+    // Промежуточное автосохранение каждые 10 секунд: история переживёт аварийное закрытие.
+    public void Tick()
+    {
+        if (active is not null && active.ElapsedSeconds - lastSaved >= 10)
+        {
+            lastSaved = (long)active.ElapsedSeconds;
+            glavnaya.SaveHistory();
+        }
+        Changed(); // Свободная память меняется, вместе с ней — допустимый объём проверки.
+    }
+
+    public async Task StopAsync()
+    {
+        cancellation?.Cancel();
+        if (running is not null)
+            await running;
+    }
+
+    private async Task StartAsync()
+    {
+        var session = active = new DiagnosticResult
+        {
+            Mode = Modes[ModeIndex].Split(' ')[0],
+            RequestedBytes = (long)MemoryMiB << 20,
+            Configuration = string.Join("\n", glavnaya.Obzor.ModulesMemory.Select(m =>
+                $"{m.RAM_slot}: {m.maker} {m.RAM_partNumber}, {m.size_GB} ГБ, {m.RAM_speed}, тайминги {m.RAM_timings}"))
+        };
+        cancellation = new();
+        lastSaved = 0;
+        Events.Clear();
+        Log($"Запуск: {session.Mode}, {TestMemoryText}");
+        glavnaya.AddResult(session);
+
+        // Сервис сообщает прогресс из фонового потока, Progress переносит его в поток интерфейса.
+        var progress = new Progress<DiagnosticProgress>(p =>
+        {
+            if (p.Pass.ToString() != PassText)
+                Log($"Проход {p.Pass}, ошибок: {p.ErrorCount}");
+            (Stage, Percent, PassText, Map) = (p.Stage, p.Percent, p.Pass.ToString(), p.Map);
+            session.ElapsedSeconds = p.Elapsed.TotalSeconds;
+            session.ErrorCount = p.ErrorCount;
+            Changed();
+        });
+        var task = MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], glavnaya.StopOnError, progress, cancellation.Token);
+        running = task;
+        var result = await task;
+        result.Started = session.Started;
+        result.Mode = session.Mode;
+        result.Configuration = session.Configuration;
+        glavnaya.History[glavnaya.History.IndexOf(session)] = result;
+        glavnaya.SelectedResult = result;
+        glavnaya.SaveHistory();
+        Log(result.StatusText);
+        (Stage, Map, Percent, active) = (result.StatusText, result.Map, result.Status == "Completed" ? 100 : Percent, null);
+        cancellation.Dispose();
+        cancellation = null;
+        Changed();
+    }
+
+    private void Log(string text)
+    {
+        Events.Insert(0, $"{DateTime.Now:HH:mm:ss} · {text}");
+        if (Events.Count > 200)
+            Events.RemoveAt(Events.Count - 1);
+    }
+}
