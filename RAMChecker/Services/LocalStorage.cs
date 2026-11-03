@@ -24,9 +24,19 @@ public class LocalStorage
         File.WriteAllText(temp, JsonSerializer.Serialize(value, options));
         File.Move(temp, path, overwrite: true);
     }
-    public List<DiagnosticResult> ReadHistory()
+    // Правильный JSON может содержать неверные данные (файл правили вручную или он повреждён): такие записи
+    // пропускаются, иначе они сломали бы карту и отчёт. Исходный файл сохраняется рядом, потому что
+    // следующее сохранение истории его перезапишет.
+    public List<DiagnosticResult> ReadHistory(out int skipped)
     {
-        var items = Read<List<DiagnosticResult>>("history.json") ?? [];
+        var all = Read<List<DiagnosticResult?>>("history.json") ?? [];
+        var items = all.Where(i => i is { Mode: not null, Detail: not null, Configuration: not null, Errors: not null,
+                Map.Length: MemoryDiagnosticService.MapSize, RequestedBytes: >= 0, ErrorCount: >= 0, Passes: >= 0, ElapsedSeconds: >= 0 and < 1e9 }
+            && Enum.IsDefined(i.Status) && i.Map.All(s => s <= MemoryDiagnosticService.Waiting) && !i.Errors.Contains(null!))
+            .Select(i => i!).ToList();
+        skipped = all.Count - items.Count;
+        if (skipped > 0)
+            File.Copy(Path.Combine(DirectoryPath, "history.json"), Path.Combine(DirectoryPath, "history.bad.json"), overwrite: true);
         // Незавершённая проверка сохранена промежуточным автосохранением: счётчик, карта и ошибки на тот момент.
         foreach (var item in items.Where(i => i.Status == DiagnosticStatus.Running))
         {

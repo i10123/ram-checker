@@ -70,8 +70,11 @@ public class MainViewModel : NabludaemyObject
     {
         try
         {
-            foreach (var r in storage.ReadHistory().OrderByDescending(r => r.Started))
+            var items = storage.ReadHistory(out int skipped);
+            foreach (var r in items.OrderByDescending(r => r.Started))
                 History.Add(r);
+            if (skipped > 0)
+                Notice = $"Пропущено повреждённых записей истории: {skipped}. Исходный файл сохранён как history.bad.json.";
             SelectedResult = History.FirstOrDefault();
         }
         catch (Exception ex)
