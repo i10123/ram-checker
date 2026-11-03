@@ -78,38 +78,54 @@ public class ObzorViewModel : NabludaemyObject
         try
         {
             var modules = await Task.Run(() => new WmiServiceMemory().GetModulesMemory());
-            if (!NeedsAdministrator)
-                await Task.Run(() => ReadSpd(modules));
+            var reader = NeedsAdministrator ? null : await Task.Run(() => ReadSpd(modules));
             foreach (var m in modules)
                 ModulesMemory.Add(m);
             SelectedModule = ModulesMemory.FirstOrDefault();
+            // Чтение температуры начнётся только теперь, когда список модулей заполнен.
+            spd = reader;
         }
         catch (Exception ex) { glavnaya.Notice = "Не удалось получить сведения о модулях: " + ex.Message; }
         Loading = false;
         Changed(nameof(Loading), nameof(ModulesText));
     }
 
-    // Паспорт SPD сопоставляется с модулями WMI по порядку слотов.
-    private void ReadSpd(List<ModuleMemoryModel> modules)
+    // Возвращает драйвер для чтения температуры или null, если шина SMBus недоступна.
+    // У WMI и SPD нет общего признака планки: модель и серийный номер лежат во второй странице SPD, которую
+    // программа не читает. Поэтому паспорт сопоставляется по порядку (адреса SPD 0x50, 0x51… и список WMI
+    // обычно идут от первого слота), но только если число модулей и объём каждого совпадают — иначе данные
+    // одной планки легко приписать другой, и тайминги не показываются.
+    private SpdReader? ReadSpd(List<ModuleMemoryModel> modules)
     {
+        SpdReader? reader = null;
         try
         {
-            spd = new SpdReader();
-            var infos = spd.ReadAll();
-            foreach (var (m, info) in modules.Zip(infos))
+            reader = new SpdReader();
+            var infos = reader.ReadAll();
+            bool matched = infos.Count == modules.Count && modules.Zip(infos).All(p => p.First.size_GB == p.Second.SizeGB);
+            SpdStatus = infos.Count == 0 ? "Микросхемы SPD не найдены на шине SMBus."
+                : !matched ? $"Паспорт SPD прочитан у {infos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
+                : modules.Count > 1 ? "Данные SPD отнесены к модулям по порядку слотов." : "";
+            // Без сопоставления драйвер не нужен: адреса датчиков температуры модулям не присвоены.
+            if (matched)
             {
-                m.SpdAddress = info.Address;
-                m.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
-                m.RAM_timings = $"{info.CL}-{info.RCD}-{info.RP}-{info.RAS}";
-                m.RAM_tRC = info.RC.ToString();
-                // Датчик температуры есть не на всех планках: о нём сообщает байт 14 паспорта SPD.
-                if (!info.HasSensor)
-                    (m.SpdAddress, m.RAM_temperature) = (0, "Датчика на модуле нет");
+                foreach (var (m, info) in modules.Zip(infos))
+                {
+                    m.SpdAddress = info.Address;
+                    m.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
+                    m.RAM_timings = $"{info.CL}-{info.RCD}-{info.RP}-{info.RAS}";
+                    m.RAM_tRC = info.RC.ToString();
+                    // Датчик температуры есть не на всех планках: о нём сообщает байт 14 паспорта SPD.
+                    if (!info.HasSensor)
+                        (m.SpdAddress, m.RAM_temperature) = (0, "Датчика на модуле нет");
+                }
+                return reader;
             }
-            SpdStatus = infos.Count == 0 ? "Микросхемы SPD не найдены на шине SMBus." : "";
         }
         catch (DllNotFoundException) { SpdStatus = "Для таймингов и температуры установите драйвер PawnIO."; }
         catch (Exception ex) { SpdStatus = "Шина SMBus недоступна: " + ex.Message; }
+        reader?.Dispose();
+        return null;
     }
 
     public void Tick()

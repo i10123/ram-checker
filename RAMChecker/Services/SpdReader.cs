@@ -2,7 +2,7 @@ using System.Buffers.Binary;
 
 namespace RAMChecker.Services;
 
-public record SpdInfo(byte Address, int NominalSpeed, int CL, int RCD, int RP, int RAS, int RC, bool HasSensor);
+public record SpdInfo(byte Address, int NominalSpeed, int CL, int RCD, int RP, int RAS, int RC, int SizeGB, bool HasSensor);
 
 // Читает паспорт планок DDR4 из микросхемы SPD по шине SMBus (стандарт JEDEC, первые 128 байт).
 public sealed class SpdReader : IDisposable
@@ -10,19 +10,29 @@ public sealed class SpdReader : IDisposable
     private const long Read = 1, ByteData = 2, WordData = 3;
     private readonly PawnIO smbus;
     // Общее имя блокировки шины, которое используют и другие программы мониторинга.
-    private readonly Mutex busLock = new(false, @"Global\Access_SMBUS.HTP.Method");
+    private readonly Mutex busLock;
 
     public SpdReader()
     {
-        // Модуль PIIX4 подходит для AMD, I801 — для Intel; загрузится тот, который нашёл свой контроллер.
+        // Модуль PIIX4 подходит для AMD, I801 — для Intel. При загрузке модуль ищет свой контроллер SMBus и без него
+        // не загружается (pawnio_load возвращает ошибку) — тогда пробуем второй. Отсутствие самого драйвера не перехватываем.
+        bool amd = true;
         try
         {
             smbus = new PawnIO("SmbusPIIX4.bin");
-            smbus.Execute("ioctl_piix4_port_sel", [0], new long[1]);
         }
-        catch
+        catch (Exception ex) when (ex is not DllNotFoundException)
         {
             smbus = new PawnIO("SmbusI801.bin");
+            amd = false;
+        }
+        busLock = new(false, @"Global\Access_SMBUS.HTP.Method");
+        // На AMD микросхемы SPD подключены к порту 0. Другая программа могла переключить порт, поэтому он выбирается
+        // явно и, как требует описание модуля, под блокировкой шины. Ошибка значит, что контроллер занят или неисправен.
+        if (amd && !Locked(() => smbus.Execute("ioctl_piix4_port_sel", [0], new long[1])))
+        {
+            Dispose();
+            throw new InvalidOperationException("не удалось выбрать порт SMBus с микросхемами SPD.");
         }
     }
 
@@ -55,20 +65,35 @@ public sealed class SpdReader : IDisposable
 
     public static SpdInfo? Decode(byte address, byte[] b)
     {
-        if (b[2] != 0x0C || Crc16(b, 126) != (b[126] | b[127] << 8))
+        if (b.Length < 128 || b[2] != 0x0C || Crc16(b, 126) != (b[126] | b[127] << 8))
             return null;
+        // Контрольная сумма защищает только от сбоев чтения, поэтому сами значения тоже проверяются.
         // Время хранится в шагах 0,125 нс плюс поправка в пикосекундах (байт со знаком).
         int Ps(int coarse, int fineIndex) => coarse * 125 + (sbyte)b[fineIndex];
         int tCK = Ps(b[18], 125);
+        // DDR4 по стандарту работает от 1600 до 3200 MT/s, то есть tCK от 0,625 до 1,25 нс (берём с запасом до 1,5 нс).
+        // Другое значение — испорченный паспорт; заодно исключено деление на ноль. Коды ширины и ёмкости выше 3 и 9 зарезервированы.
+        if (tCK is < 625 or > 1500 || (b[12] & 7) > 3 || (b[13] & 7) > 3 || (b[4] & 0x0F) > 9)
+            return null;
         // Перевод наносекунд в такты по правилу округления JEDEC.
         int Clocks(int ps) => (ps * 1000 / tCK + 974) / 1000;
-        int cl = Clocks(Ps(b[24], 123));
-        // Байты 20–23 — список поддерживаемых CL, бит 0 соответствует CL7.
+        int aa = Clocks(Ps(b[24], 123)), rcd = Clocks(Ps(b[25], 122)), rp = Clocks(Ps(b[26], 121));
+        int ras = Clocks(((b[27] & 0x0F) << 8 | b[28]) * 125), rc = Clocks(Ps((b[27] >> 4) << 8 | b[29], 120));
+        // Байты 20–23 — список поддерживаемых CL: бит 0 соответствует CL7, а при флаге в старшем бите байта 23 — CL23.
+        // Берётся наименьшая поддерживаемая задержка не меньше рассчитанной; если такой нет, паспорт неверен.
+        int first = (b[23] & 0x80) != 0 ? 23 : 7;
         uint supported = BinaryPrimitives.ReadUInt32LittleEndian(b.AsSpan(20)) & 0x3FFFFFFF;
-        while (cl < 37 && (supported >> (cl - 7) & 1) == 0)
+        int cl = Math.Max(first, aa);
+        while (cl < first + 30 && (supported >> (cl - first) & 1) == 0)
             cl++;
-        return new(address, 2_000_000 / tCK, cl, Clocks(Ps(b[25], 122)), Clocks(Ps(b[26], 121)),
-            Clocks(((b[27] & 0x0F) << 8 | b[28]) * 125), Clocks(Ps((b[27] >> 4) << 8 | b[29], 120)), (b[14] & 0x80) != 0);
+        if (cl == first + 30 || new[] { aa, rcd, rp, ras, rc }.Min() <= 0)
+            return null;
+        // Объём планки: ёмкость кристалла × число кристаллов на шине (ширина шины / ширина кристалла) × ранги,
+        // у сборок 3DS ещё × число кристаллов в корпусе. Нужен, чтобы сверить паспорт с модулем из WMI.
+        int density = b[4] & 0x0F, densityMb = density < 8 ? 256 << density : density == 8 ? 12288 : 24576;
+        int dies = (b[6] & 3) == 2 ? (b[6] >> 4 & 7) + 1 : 1;
+        int sizeGB = densityMb / 8 * (8 << (b[13] & 7)) / (4 << (b[12] & 7)) * ((b[12] >> 3 & 7) + 1) * dies / 1024;
+        return new(address, 2_000_000 / tCK, cl, rcd, rp, ras, rc, sizeGB, (b[14] & 0x80) != 0);
     }
 
     // Контрольная сумма JEDEC защищает от ошибок чтения по шине.
