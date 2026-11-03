@@ -3,8 +3,11 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:RAMChecker.ViewModels"
         xmlns:v="clr-namespace:RAMChecker.Views"
-        Title="RAM Diagnostic Suite" Width="1280" Height="820" MinWidth="1000" MinHeight="640"
+        Title="MemScope" Icon="Assets/logo.ico" Width="1280" Height="820" MinWidth="1000" MinHeight="640"
         WindowStartupLocation="CenterScreen" Loaded="Window_Loaded" Closing="Window_Closing">
+    <Window.Resources>
+        <ResourceDictionary Source="Assets/Logo.xaml" />
+    </Window.Resources>
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
@@ -16,10 +19,13 @@
 
         <!-- Боковое меню разделов. -->
         <DockPanel Margin="12,20,12,12">
-            <StackPanel DockPanel.Dock="Top" Margin="12,0,0,24">
-                <TextBlock Text="RAM Diagnostic" FontSize="20" FontWeight="SemiBold" />
-                <TextBlock Text="Диагностика памяти" Style="{StaticResource Podpis}" />
-            </StackPanel>
+            <DockPanel DockPanel.Dock="Top" Margin="12,0,0,24">
+                <Image Source="{StaticResource Logo}" Width="40" Height="40" Margin="0,0,12,0" />
+                <StackPanel VerticalAlignment="Center">
+                    <TextBlock Text="MemScope" FontSize="20" FontWeight="SemiBold" />
+                    <TextBlock Text="Диагностика памяти" Style="{StaticResource Podpis}" />
+                </StackPanel>
+            </DockPanel>
             <ListBox ItemsSource="{Binding Navigation}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" />
         </DockPanel>
 

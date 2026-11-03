@@ -12,7 +12,7 @@ public class LocalStorage
     }
     private readonly JsonSerializerOptions options = new() { WriteIndented = true };
     public LocalStorage(string? directory = null) => DirectoryPath = directory ?? Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "RAM Diagnostic Suite");
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MemScope");
 
     public T? Read<T>(string name)
     {

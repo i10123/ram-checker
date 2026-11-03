@@ -19,11 +19,11 @@ public static class ReportExporter
         var errors = string.Concat(r.Errors.Select(e =>
             $"<tr><td>{e.OffsetText}</td><td>{e.ExpectedText}</td><td>{e.ActualText}</td><td>{E(e.Stage)}</td><td>{e.Pass}</td></tr>"));
         return $$"""
-            <!doctype html><html lang="ru"><meta charset="utf-8"><title>Отчёт RAM Diagnostic Suite</title>
+            <!doctype html><html lang="ru"><meta charset="utf-8"><title>Отчёт MemScope</title>
             <style>body{font:15px 'Segoe UI',sans-serif;color:#1b1b1b;max-width:900px;margin:40px auto;padding:0 24px}
             h1{color:#005fb8}table{border-collapse:collapse;width:100%;margin:16px 0}td,th{text-align:left;padding:8px;border-bottom:1px solid #e5e5e5}
             pre{background:#f5f5f5;padding:12px;white-space:pre-wrap}.legend span{margin-right:16px}</style>
-            <h1>RAM Diagnostic Suite</h1><h2>{{E(r.StatusText)}}</h2><table>{{rows}}</table>
+            <h1>MemScope</h1><h2>{{E(r.StatusText)}}</h2><table>{{rows}}</table>
             <p>{{E(r.Detail)}}</p><h2>Рекомендации</h2><p>{{E(r.Recommendation)}}</p>
             <h2>Карта памяти</h2><svg width="704" height="176">{{cells}}</svg>
             <p class="legend"><span style="color:#0f7b0f">■ без ошибок</span><span style="color:#d13438">■ есть ошибки</span><span style="color:#8a8f96">■ не проверено</span></p>
