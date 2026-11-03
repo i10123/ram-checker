@@ -120,6 +120,15 @@ storage.Write("history.json", new List<DiagnosticResult> { session });
 var restored = storage.ReadHistory()[0];
 Check(restored.Status == DiagnosticStatus.Interrupted && restored.ErrorCount > 0 && restored.Errors.Count == restored.ErrorCount
     && restored.Map[MapSize / 3] == Error && !restored.Map.Contains(Waiting), $"после аварии счётчик, список ошибок и карта согласованы: {restored.ErrorCount} = {restored.Errors.Count}");
+// Авария сразу после первого отчёта с ошибкой: проход на 64 МБ короче 200 мс, поэтому первая ошибка приходит
+// в отчёте конца прохода, раньше очередного периодического снимка карты.
+var early = new DiagnosticResult { RequestedBytes = 64L << 20 };
+await RunAsync(64L << 20, TimeSpan.FromSeconds(0.5), false, new SyncProgress<DiagnosticProgress>(p =>
+{
+    if (early.ErrorCount == 0)
+        early.ApplyProgress(p);
+}), CancellationToken.None, imitation: true);
+Check(early.ErrorCount == 1 && early.Errors.Count == 1 && early.Map[MapSize / 3] == Error, $"первая ошибка сохраняется вместе с красной клеткой карты (красных {early.Map.Count(c => c == Error)})");
 string historyPath = Path.Combine(storage.DirectoryPath, "history.json");
 File.WriteAllText(historyPath, """[{"Status": "Stopped", "ErrorCount": 0}, {"Status": "Running", "Passes": 1}]""");
 var old = storage.ReadHistory();
@@ -154,6 +163,8 @@ byte[] Spd(Action<byte[]> change)
 }
 Check(SpdReader.Decode(0x50, Spd(b => (b[18], b[125]) = (0, 0))) is null && SpdReader.Decode(0x50, Spd(b => b[18] = 1)) is null, "нулевой и слишком короткий tCK отклоняются");
 Check(SpdReader.Decode(0x50, Spd(b => b[20] = b[21] = b[22] = 0)) is null, "пустой список поддерживаемых CL отклоняется");
+// Поддерживается только CL7, а tAA = 30 нс требует CL40 — за пределами списка.
+Check(SpdReader.Decode(0x50, Spd(b => (b[20], b[21], b[22], b[24], b[123]) = (1, 0, 0, 240, 0))) is null, "расчётный CL выше списка поддерживаемых отклоняется");
 Check(SpdReader.Decode(0x50, spd[..100]) is null, "слишком короткий паспорт отклоняется");
 
 // --- Отчёт ---
@@ -164,6 +175,9 @@ var partial = new DiagnosticResult { RequestedBytes = 512L << 20, Status = Diagn
 partial.Map.AsSpan(0, 64).Fill(Ok); // до остановки первый проход завершили 64 блока из 256
 html = ReportExporter.Html(partial);
 Check(html.Contains("<td>Проверено полным проходом</td><td>128 МБ</td>"), "отчёт об остановленной проверке показывает проверенный объём, а не запрошенный");
+partial.Map.AsSpan().Fill(Ok);
+partial.Map[0] = Error; // красный блок мог пройти проход целиком, а мог быть остановлен на ошибке
+Check(partial.CheckedText == "не менее 510 МБ", $"с ошибками в первом проходе объём указан как нижняя граница: {partial.CheckedText}");
 
 Console.WriteLine(failed == 0 ? "\nВсе проверки пройдены" : $"\nНе пройдено: {failed}");
 return failed;
