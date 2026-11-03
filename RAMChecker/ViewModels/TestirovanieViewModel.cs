@@ -24,11 +24,16 @@ public class TestirovanieViewModel : NabludaemyObject
     public string Stage { get; private set; } = "Готово к запуску";
     public double Percent { get; private set; }
     public string PassText { get; private set; } = "—";
-    public byte[] Map { get; private set; } = new byte[MemoryDiagnosticService.MapSize];
+    public Kletka[] Kletki { get; private set; } = Kletka.Iz(new byte[MemoryDiagnosticService.MapSize], 0);
+    public string SpeedText { get; private set; } = "—";
+    public ObzorViewModel Obzor => glavnaya.Obzor;
     public bool IsRunning => cancellation is not null;
     public bool IsIdle => !IsRunning;
     public string ElapsedText => active?.DurationText ?? "00:00:00";
     public string ErrorCountText => (active?.ErrorCount ?? 0).ToString();
+    // Для циклического и стресс-режима длительность не задана — оставшееся время неизвестно.
+    public string RemainingText => active is not null && Durations[ModeIndex] is { } d
+        ? TimeSpan.FromSeconds(Math.Max(0, d.TotalSeconds - active.ElapsedSeconds)).ToString(@"hh\:mm\:ss") : "—";
     public string TestMemoryText => $"{MemoryMiB:0} МБ";
     public Komanda StartCommand { get; }
     public Komanda StopCommand { get; }
@@ -96,11 +101,20 @@ public class TestirovanieViewModel : NabludaemyObject
         glavnaya.AddResult(session);
 
         // Сервис сообщает прогресс из фонового потока, Progress переносит его в поток интерфейса.
+        var last = (Seconds: 0d, Bytes: 0L);
         var progress = new Progress<DiagnosticProgress>(p =>
         {
+            // Скорость — сколько гигабайт буфера записано и проверено за время с прошлого отчёта.
+            if (p.Elapsed.TotalSeconds - last.Seconds >= 0.5)
+            {
+                SpeedText = $"{(p.ProcessedBytes - last.Bytes) / (p.Elapsed.TotalSeconds - last.Seconds) / (1L << 30):0.0} ГБ/с";
+                last = (p.Elapsed.TotalSeconds, p.ProcessedBytes);
+            }
+            if (p.Map is not null)
+                Kletki = Kletka.Iz(p.Map, session.RequestedBytes);
             if (p.Passes > session.Passes)
                 Log($"Проход {p.Passes} завершён, ошибок: {p.ErrorCount}");
-            (Stage, Percent, PassText, Map) = (p.Stage, p.Percent, p.Pass.ToString(), p.Map ?? Map);
+            (Stage, Percent, PassText) = (p.Stage, p.Percent, p.Pass.ToString());
             session.ElapsedSeconds = p.Elapsed.TotalSeconds;
             (session.ErrorCount, session.Passes) = (p.ErrorCount, p.Passes);
             Changed();
@@ -115,7 +129,7 @@ public class TestirovanieViewModel : NabludaemyObject
         glavnaya.SelectedResult = result;
         glavnaya.SaveHistory();
         Log(result.StatusText);
-        (Stage, Map, Percent, active) = (result.StatusText, result.Map, result.Status == "Completed" ? 100 : Percent, null);
+        (Stage, Kletki, Percent, SpeedText, active) = (result.StatusText, result.Kletki, result.Status == "Completed" ? 100 : Percent, "—", null);
         cancellation.Dispose();
         cancellation = null;
         MemoryMonitor.ReturnFreeMemory(); // Убираем накопившиеся за проверку снимки прогресса.

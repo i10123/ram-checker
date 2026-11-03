@@ -55,10 +55,14 @@
                         <StackPanel>
                             <TextBlock Text="{Binding Stage}" Style="{StaticResource Podzagolovok}" />
                             <ProgressBar Value="{Binding Percent, Mode=OneWay}" Height="8" Margin="0,0,0,16" />
-                            <UniformGrid Columns="3">
+                            <UniformGrid Columns="4">
                                 <StackPanel>
                                     <TextBlock Text="Прошло" Style="{StaticResource Podpis}" />
                                     <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource Chislo}" />
+                                </StackPanel>
+                                <StackPanel>
+                                    <TextBlock Text="Осталось" Style="{StaticResource Podpis}" />
+                                    <TextBlock Text="{Binding RemainingText}" Style="{StaticResource Chislo}" />
                                 </StackPanel>
                                 <StackPanel>
                                     <TextBlock Text="Проход" Style="{StaticResource Podpis}" />
@@ -75,10 +79,28 @@
                     <Border Style="{StaticResource Kartochka}">
                         <StackPanel>
                             <TextBlock Text="Карта памяти" Style="{StaticResource Podzagolovok}" />
-                            <ItemsControl ItemsSource="{Binding Map}" Style="{StaticResource KartaPamyati}" />
+                            <ItemsControl ItemsSource="{Binding Kletki}" Style="{StaticResource KartaPamyati}" />
                             <TextBlock Text="Каждая клетка — 1/256 буфера. Яркая зелёная — блок прошёл текущий проход, тёмная — ждёт своей очереди, красная — найдены ошибки, серая — ещё не проверен."
                                        Style="{StaticResource Podpis}" Margin="0,12,0,0" />
                         </StackPanel>
+                    </Border>
+
+                    <!-- Нагрузка во время проверки: скорость обработки буфера и загрузка памяти системы. -->
+                    <Border Style="{StaticResource Kartochka}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="200" />
+                                <ColumnDefinition />
+                            </Grid.ColumnDefinitions>
+                            <StackPanel>
+                                <TextBlock Text="Нагрузка" Style="{StaticResource Podzagolovok}" />
+                                <TextBlock Text="Скорость проверки" Style="{StaticResource Podpis}" />
+                                <TextBlock Text="{Binding SpeedText}" Style="{StaticResource Chislo}" Margin="0,4,0,12" />
+                                <TextBlock Text="Загрузка памяти" Style="{StaticResource Podpis}" />
+                                <TextBlock Text="{Binding Obzor.LoadText}" Style="{StaticResource Chislo}" />
+                            </StackPanel>
+                            <ContentControl Grid.Column="1" Content="{Binding Obzor}" ContentTemplate="{StaticResource GrafikZagruzki}" />
+                        </Grid>
                     </Border>
                 </StackPanel>
             </Grid>

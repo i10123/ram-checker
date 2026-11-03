@@ -86,26 +86,7 @@
                                 <TextBlock Text="50%" Style="{StaticResource Podpis}" FontSize="11" VerticalAlignment="Center" />
                             </DockPanel>
 
-                            <!-- Область графика: сетка, заливка под линией и сама линия. -->
-                            <Viewbox Grid.Row="1" Grid.Column="1" Stretch="Fill">
-                                <Canvas Width="600" Height="160" ClipToBounds="True">
-                                    <Line X1="0" Y1="1" X2="600" Y2="1" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
-                                    <Line X1="0" Y1="40" X2="600" Y2="40" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
-                                    <Line X1="0" Y1="80" X2="600" Y2="80" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
-                                    <Line X1="0" Y1="120" X2="600" Y2="120" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
-                                    <Line X1="0" Y1="159" X2="600" Y2="159" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
-                                    <Polygon Points="{Binding UsageArea}" Fill="{DynamicResource AccentFillColorDefaultBrush}">
-                                        <Polygon.OpacityMask>
-                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
-                                                <GradientStop Color="#70000000" Offset="0" />
-                                                <GradientStop Color="#08000000" Offset="1" />
-                                            </LinearGradientBrush>
-                                        </Polygon.OpacityMask>
-                                    </Polygon>
-                                    <Polyline Points="{Binding UsagePoints}" Stroke="{DynamicResource AccentFillColorDefaultBrush}"
-                                              StrokeThickness="2" StrokeLineJoin="Round" />
-                                </Canvas>
-                            </Viewbox>
+                            <ContentControl Grid.Row="1" Grid.Column="1" Content="{Binding}" ContentTemplate="{StaticResource GrafikZagruzki}" />
                             <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,6,0,0">
                                 <TextBlock DockPanel.Dock="Right" Text="сейчас" Style="{StaticResource Podpis}" FontSize="11" />
                                 <TextBlock Text="60 секунд назад" Style="{StaticResource Podpis}" FontSize="11" />
