@@ -23,6 +23,9 @@ public static class MemoryDiagnosticService
     public const byte NotChecked = 0, Ok = 1, Error = 2, Waiting = 3;
     private static readonly string[] Steps = ["Заполнение", "Проверка вперёд", "Проверка назад"];
     private static readonly string[] Patterns = ["Свой адрес", "Шахматный шаблон", "Бегущая единица", "Случайный шаблон"];
+    // Отмена проверяется раз в 65 536 ячеек (256 КБ): «Остановить» срабатывает почти сразу,
+    // а одна лишняя проверка условия на такой участок не замедляет цикл.
+    private const int CancelEvery = 0xFFFF;
 
     // Шаблон адреса: умножение на нечётное число взаимно однозначно, поэтому соседние ячейки хранят разные значения.
     // Шахматный шаблон: 1010… и 0101… чередуются через ячейку и меняются местами каждые четыре прохода.
@@ -47,24 +50,33 @@ public static class MemoryDiagnosticService
 
     public static string PatternName(int pass) => Patterns[(pass - 1) % 4];
 
-    public static void FillBlock(Span<uint> block, long start, int pass)
+    public static void FillBlock(Span<uint> block, long start, int pass, CancellationToken token = default)
     {
         for (int i = 0; i < block.Length; i++)
+        {
+            if ((i & CancelEvery) == 0)
+                token.ThrowIfCancellationRequested();
             block[i] = Pattern(start + i, pass);
+        }
     }
 
     // Сверяет блок с ожидаемыми значениями и записывает инверсию. Возвращает число ошибок.
-    public static int CheckBlock(Span<uint> block, long start, int pass, bool backward, Action<long, uint, uint> onError)
+    public static int CheckBlock(Span<uint> block, long start, int pass, bool backward, Action<long, uint, uint> onError,
+        CancellationToken token = default)
     {
         int errors = 0;
         for (int k = 0; k < block.Length; k++)
         {
+            if ((k & CancelEvery) == 0)
+                token.ThrowIfCancellationRequested();
             int i = backward ? block.Length - 1 - k : k;
             uint expected = backward ? ~Pattern(start + i, pass) : Pattern(start + i, pass);
             if (block[i] != expected)
             {
                 errors++;
                 onError(start + i, expected, block[i]);
+                // При остановке на первой ошибке onError отменяет токен, и поток сразу выходит из блока.
+                token.ThrowIfCancellationRequested();
             }
             block[i] = ~expected;
         }
@@ -73,14 +85,28 @@ public static class MemoryDiagnosticService
 
     // Буфер выделяется вне сборщика мусора: после проверки память сразу возвращается Windows.
     // imitation — искусственная ошибка для проверки отображения: после заполнения в одном блоке переворачивается бит.
-    public static unsafe Task<DiagnosticResult> RunAsync(long bytes, TimeSpan? duration, bool stopOnFirstError,
-        IProgress<DiagnosticProgress> progress, CancellationToken token, bool imitation = false) => Task.Run(() =>
+    // stopOnFirstError: блоки проверяются параллельно, и до остановки каждый поток может успеть найти
+    // по одной ошибке, поэтому счётчик ошибок не больше числа потоков, а не строго единица.
+    public static Task<DiagnosticResult> RunAsync(long bytes, TimeSpan? duration, bool stopOnFirstError,
+        IProgress<DiagnosticProgress> progress, CancellationToken token, bool imitation = false)
+    {
+        // Буфер делится на 256 блоков из целых 32-битных слов. В блоке не меньше 8 слов (имитация портит ячейку 7)
+        // и не больше int.MaxValue — больше не вмещает Span. Интерфейс передаёт объём, кратный 16 МБ, от 64 МБ.
+        long words = bytes / 4 / MapSize;
+        if (bytes % (4 * MapSize) != 0 || words is < 8 or > int.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(bytes), bytes, "Объём должен быть кратен 1 КБ и не меньше 8 КБ.");
+        if (duration <= TimeSpan.Zero)
+            throw new ArgumentOutOfRangeException(nameof(duration), duration, "Длительность должна быть больше нуля.");
+        return Task.Run(() => Run(bytes, (int)words, duration, stopOnFirstError, progress, token, imitation));
+    }
+
+    private static unsafe DiagnosticResult Run(long bytes, int blockWords, TimeSpan? duration, bool stopOnFirstError,
+        IProgress<DiagnosticProgress> progress, CancellationToken token, bool imitation)
     {
         var result = new DiagnosticResult { RequestedBytes = bytes };
         var clock = Stopwatch.StartNew();
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(token);
         var blocks = new nint[MapSize];
-        int blockWords = (int)(bytes / 4 / MapSize);
         int pass = 0, step = 0, done = 0;
         var errorsLock = new Lock(); // System.Threading.Lock (.NET 9) — отдельный объект только для синхронизации
         long blockSteps = 0; // сколько раз блоки уже записаны или проверены — для скорости проверки
@@ -139,12 +165,13 @@ public static class MemoryDiagnosticService
                         long start = (long)b * blockWords;
                         if (step == 0)
                         {
-                            FillBlock(Block(b), start, pass);
+                            FillBlock(Block(b), start, pass, stop.Token);
                             if (imitation && b == MapSize / 3)
                                 Block(b)[7] ^= 1u << 5;
                         }
                         // Клетка карты зеленеет, когда её блок прошёл текущий проход без ошибок.
-                        else if (CheckBlock(Block(b), start, pass, step == 2, (a, e, r) => OnError(b, a, e, r)) == 0 && step == 2 && result.Map[b] != Error)
+                        else if (CheckBlock(Block(b), start, pass, step == 2, (a, e, r) => OnError(b, a, e, r), stop.Token) == 0
+                            && step == 2 && result.Map[b] != Error)
                             result.Map[b] = Ok;
                         Interlocked.Increment(ref done);
                         Interlocked.Increment(ref blockSteps);
@@ -173,5 +200,5 @@ public static class MemoryDiagnosticService
                 NativeMemory.Free((void*)block);
         }
         return result;
-    });
+    }
 }
