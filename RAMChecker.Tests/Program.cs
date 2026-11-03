@@ -40,6 +40,7 @@ Check(Pattern(5, 1) != Pattern(5, 2) && Pattern(5, 4) != Pattern(5, 8), "раз�
 Check(Enumerable.Range(0, 1000).All(i => Pattern(i, 2) == ~Pattern(i + 1, 2) && Pattern(i, 6) == ~Pattern(i, 2)), "шахматный шаблон: у соседей противоположные биты, рисунок меняется через четыре прохода");
 Check(Enumerable.Range(0, 1000).All(i => uint.PopCount(Pattern(i, 3)) == 1 && Pattern(i + 1, 3) == uint.RotateLeft(Pattern(i, 3), 1)), "бегущая единица: один бит, у соседа сдвинут на разряд");
 Check(Enumerable.Range(0, 100_000).Average(i => uint.PopCount(Pattern(i, 4))) is > 15.5 and < 16.5, "случайный шаблон: в среднем половина битов единичные");
+Check(Pattern(7, 1) == Pattern(7 + (1L << 32), 1) && Pattern(7, 4) != Pattern(7 + (1L << 32), 4), "адресный шаблон повторяется через 16 ГБ, случайный — различает такие ячейки");
 Check(PatternName(1) == "Свой адрес" && PatternName(3) == "Бегущая единица" && PatternName(8) == "Случайный шаблон", "шаблоны сменяются по кругу");
 
 FillBlock(block, 0, 2);
@@ -117,7 +118,7 @@ var session = new DiagnosticResult { RequestedBytes = 64L << 20 };
 await RunAsync(64L << 20, TimeSpan.FromSeconds(1), false, new SyncProgress<DiagnosticProgress>(session.ApplyProgress), CancellationToken.None, imitation: true);
 var storage = new LocalStorage(Path.Combine(Path.GetTempPath(), "MemScope.Tests"));
 storage.Write("history.json", new List<DiagnosticResult> { session });
-var restored = storage.ReadHistory()[0];
+var restored = storage.ReadHistory(out _)[0];
 Check(restored.Status == DiagnosticStatus.Interrupted && restored.ErrorCount > 0 && restored.Errors.Count == restored.ErrorCount
     && restored.Map[MapSize / 3] == Error && !restored.Map.Contains(Waiting), $"после аварии счётчик, список ошибок и карта согласованы: {restored.ErrorCount} = {restored.Errors.Count}");
 // Авария сразу после первого отчёта с ошибкой: проход на 64 МБ короче 200 мс, поэтому первая ошибка приходит
@@ -131,10 +132,18 @@ await RunAsync(64L << 20, TimeSpan.FromSeconds(0.5), false, new SyncProgress<Dia
 Check(early.ErrorCount == 1 && early.Errors.Count == 1 && early.Map[MapSize / 3] == Error, $"первая ошибка сохраняется вместе с красной клеткой карты (красных {early.Map.Count(c => c == Error)})");
 string historyPath = Path.Combine(storage.DirectoryPath, "history.json");
 File.WriteAllText(historyPath, """[{"Status": "Stopped", "ErrorCount": 0}, {"Status": "Running", "Passes": 1}]""");
-var old = storage.ReadHistory();
+var old = storage.ReadHistory(out _);
 storage.Write("history.json", old);
 Check(old[0].Status == DiagnosticStatus.Stopped && old[1].Status == DiagnosticStatus.Interrupted && File.ReadAllText(historyPath).Contains("\"Status\": \"Stopped\""),
     "история прежнего формата читается, статус по-прежнему хранится строкой");
+File.WriteAllText(historyPath, """[{"Status": "Stopped"}, {"Status": "Completed", "Map": ""}, {"Status": "Completed", "Map": null}, {"Status": 42}]""");
+var checkedHistory = storage.ReadHistory(out int skippedRecords);
+Check(checkedHistory.Count == 1 && skippedRecords == 3 && File.Exists(Path.Combine(storage.DirectoryPath, "history.bad.json")),
+    "записи с пустой или отсутствующей картой и неизвестным статусом пропускаются, исходный файл сохранён");
+int notices = 0;
+early.PropertyChanged += (_, _) => notices++;
+early.ApplyProgress(new("", 1, 1, 0, TimeSpan.FromHours(25), 1, 0, null, null));
+Check(notices == 1 && early.DurationText == "25:00:00", $"идущая проверка сообщает экрану об изменениях, длительность больше суток: {early.DurationText}");
 
 // --- SPD ---
 Check(SpdReader.Crc16(Encoding.ASCII.GetBytes("123456789"), 9) == 0x31C3, "CRC16 совпадает с эталоном CRC-16/XMODEM");
