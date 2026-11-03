@@ -1,10 +1,9 @@
 using System.Net;
-using System.Text;
 using RAMChecker.Models;
 
 namespace RAMChecker.Services;
 
-// Формирует отчёт о проверке в HTML (с картой памяти) и CSV.
+// Формирует HTML-отчёт о проверке с картой памяти.
 public static class ReportExporter
 {
     public static string Html(DiagnosticResult r)
@@ -30,16 +29,5 @@ public static class ReportExporter
             <h2>Конфигурация</h2><pre>{{E(r.Configuration)}}</pre>
             <h2>Ошибки (первые 1000)</h2><table><tr><th>Смещение</th><th>Ожидалось</th><th>Прочитано</th><th>Шаг</th><th>Проход</th></tr>{{errors}}</table></html>
             """;
-    }
-
-    public static string Csv(DiagnosticResult r)
-    {
-        static string Q(string s) => "\"" + s.Replace("\"", "\"\"") + "\"";
-        var b = new StringBuilder("Дата;Статус;Режим;Длительность;Проверено;Проходов;Ошибок\r\n");
-        b.AppendLine(string.Join(';', new[] { r.StartedText, r.StatusText, r.Mode, r.DurationText, r.MemoryText, r.Passes.ToString(), r.ErrorCount.ToString() }.Select(Q)));
-        b.AppendLine().AppendLine("Смещение;Ожидалось;Прочитано;Шаг;Проход");
-        foreach (var e in r.Errors)
-            b.AppendLine(string.Join(';', new[] { e.OffsetText, e.ExpectedText, e.ActualText, e.Stage, e.Pass.ToString() }.Select(Q)));
-        return b.ToString();
     }
 }

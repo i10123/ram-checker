@@ -42,9 +42,7 @@
                     <TextBlock Text="{Binding Detail}" Style="{StaticResource Podpis}" Margin="0,8,0,0" />
                     <ItemsControl ItemsSource="{Binding Map}" Style="{StaticResource KartaPamyati}" Margin="0,16" />
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
-                        <Button Content="Сохранить HTML" Tag="html" Click="Export_Click" Style="{DynamicResource AccentButtonStyle}" />
-                        <Button Content="Сохранить CSV" Tag="csv" Click="Export_Click" Margin="8,0" />
-                        <Button Content="Печать / PDF" Tag="pdf" Click="Export_Click" />
+                        <Button Content="Сохранить отчёт" Click="Export_Click" Style="{DynamicResource AccentButtonStyle}" />
                         <Button Content="Удалить" Margin="8,0" Command="{Binding DataContext.DeleteResultCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                     </StackPanel>
                 </StackPanel>
