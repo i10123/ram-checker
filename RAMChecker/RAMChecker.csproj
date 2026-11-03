@@ -1,17 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
-
-  <PropertyGroup>
-    <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0-windows</TargetFramework>
-    <Nullable>enable</Nullable>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <UseWPF>true</UseWPF>
-    <AssemblyName>RAMChecker</AssemblyName>
-    <RootNamespace>RAMChecker</RootNamespace>
-  </PropertyGroup>
-
-  <ItemGroup>
-    <!-- Библиотека Microsoft для получения сведений Windows через WMI. -->
-    <PackageReference Include="System.Management" Version="10.0.12" />
-  </ItemGroup>
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net10.0-windows</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <UseWPF>true</UseWPF>
+        <AssemblyName>RAMChecker</AssemblyName>
+        <RootNamespace>RAMChecker</RootNamespace>
+        <RestoreAdditionalProjectSources>$(MSBuildThisFileDirectory)..\vendor</RestoreAdditionalProjectSources>
+    </PropertyGroup>
+    <ItemGroup>
+        <PackageReference Include="System.Management" Version="10.0.12" />
+        <PackageReference Include="ZenStates-Core" Version="1.0.0-local.869b7e8" />
+    </ItemGroup>
 </Project>

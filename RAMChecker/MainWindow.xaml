@@ -1,67 +1,459 @@
 <Window x:Class="RAMChecker.MainWindow"
-        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        xmlns:vm="clr-namespace:RAMChecker.ViewModels"
-        Title="RAM Checker" Height="600" Width="1200">
-    <!-- ViewModel предоставляет окну данные для привязки. -->
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:vm="clr-namespace:RAMChecker.ViewModels"
+    Title="RAM Diagnostic Suite"
+    Width="1440" Height="960" MinWidth="1080" MinHeight="720"
+    Background="#F4F6F8" Foreground="#172B3A"
+    FontFamily="Segoe UI" FontSize="14"
+    Loaded="Window_Loaded" Closing="Window_Closing">
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
-
-    <Grid Margin="20">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="*" />
-            <RowDefinition Height="Auto" />
-        </Grid.RowDefinitions>
-
-        <!-- Таблица показывает свойства каждого модуля памяти. -->
-        <DataGrid Grid.Row="0"
-                  ItemsSource="{Binding ModulesMemory}"
-                  AutoGenerateColumns="False"
-                  IsReadOnly="True">
-            <DataGrid.Columns>
-                <DataGridTextColumn Header="Объём, ГБ" Binding="{Binding size_GB}" />
-                <DataGridTextColumn Header="Производитель" Binding="{Binding maker}" />
-                <!-- Частота и эффективная скорость передачи отображаются в отдельных столбцах. -->
-                <DataGridTextColumn Header="Частота, МГц" Binding="{Binding RAM_frequency_MHz}" />
-                <DataGridTextColumn Header="Скорость, MT/s" Binding="{Binding RAM_speed_MT_s}" />
-                <DataGridTextColumn Header="Тип памяти" Binding="{Binding RAM_type}" />
-                <DataGridTextColumn Header="Форм-фактор" Binding="{Binding RAM_formFactor}" />
-                <DataGridTextColumn Header="Напряжение, В" Binding="{Binding RAM_voltage_V}" />
-                <DataGridTextColumn Header="Ширина данных, бит" Binding="{Binding RAM_dataWidth_bits}" />
-                <DataGridTextColumn Header="Полная ширина, бит" Binding="{Binding RAM_totalWidth_bits}" />
-                <!-- WMI пока не предоставляет значения таймингов CL, tRCD, tRP и tRAS. -->
-                <DataGridTextColumn Header="CL" Binding="{Binding RAM_CL}" />
-                <DataGridTextColumn Header="tRCD" Binding="{Binding RAM_tRCD}" />
-                <DataGridTextColumn Header="tRP" Binding="{Binding RAM_tRP}" />
-                <DataGridTextColumn Header="tRAS" Binding="{Binding RAM_tRAS}" />
-                <DataGridTextColumn Header="Номер детали" Binding="{Binding RAM_partNumber}" />
-                <DataGridTextColumn Header="Расположение" Binding="{Binding RAM_deviceLocator}" />
-                <DataGridTextColumn Header="Банк" Binding="{Binding RAM_bankLabel}" />
-            </DataGrid.Columns>
-        </DataGrid>
-
-        <!-- Показывает сообщение, если сведения не удалось получить. -->
-        <StackPanel Grid.Row="1" Margin="0,12,0,0">
-            <TextBlock Text="{Binding StatusMessage}"
-                       TextWrapping="Wrap"
-                       Margin="0,0,0,8" />
-
-            <!-- Кнопка появляется только после ошибки доступа к WMI. -->
-            <Button Content="Перезапустить от имени администратора"
-                    Command="{Binding RestartAsAdminCommand}"
-                    HorizontalAlignment="Left">
-                <Button.Style>
-                    <Style TargetType="Button">
-                        <Setter Property="Visibility" Value="Collapsed" />
-                        <Style.Triggers>
-                            <DataTrigger Binding="{Binding ShowAdminButton}" Value="True">
-                                <Setter Property="Visibility" Value="Visible" />
-                            </DataTrigger>
-                        </Style.Triggers>
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="Visible" />
+        <SolidColorBrush x:Key="Muted" Color="#647584" />
+        <SolidColorBrush x:Key="Accent" Color="#147D73" />
+        <Style x:Key="Card" TargetType="Border">
+            <Setter Property="Background" Value="White" />
+            <Setter Property="BorderBrush" Value="#DEE5EB" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="4" />
+            <Setter Property="Padding" Value="16" />
+            <Setter Property="Margin" Value="0,0,0,12" />
+        </Style>
+        <Style x:Key="Heading" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,0,20" />
+        </Style>
+        <Style x:Key="Section" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,0,18" />
+        </Style>
+        <Style x:Key="Label" TargetType="TextBlock">
+            <Setter Property="Foreground" Value="{StaticResource Muted}" />
+            <Setter Property="FontSize" Value="13" />
+            <Setter Property="Margin" Value="0,0,0,8" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="Value" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="26" />
+            <Setter Property="FontWeight" Value="Bold" />
+            <Setter Property="Margin" Value="0,0,0,10" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style TargetType="Button">
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="MinHeight" Value="34" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="Foreground" Value="#172B3A" />
+            <Setter Property="BorderBrush" Value="#DEE5EB" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Padding" Value="12,7" />
+            <Setter Property="FontWeight" Value="Normal" />
+            <Setter Property="Cursor" Value="Hand" />
+        </Style>
+        <Style x:Key="Primary" TargetType="Button" BasedOn="{StaticResource {x:Type Button}}">
+            <Setter Property="Background" Value="#E8F4F1" />
+            <Setter Property="Foreground" Value="#172B3A" />
+            <Setter Property="BorderBrush" Value="{StaticResource Accent}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+        </Style>
+        <Style TargetType="ComboBox">
+            <Setter Property="Padding" Value="12,8" />
+            <Setter Property="MinHeight" Value="38" />
+            <Setter Property="FontSize" Value="14" />
+        </Style>
+        <Style TargetType="ListBoxItem">
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Margin" Value="0,0,0,4" />
+            <Setter Property="Padding" Value="8" />
+        </Style>
+        <Style TargetType="CheckBox">
+            <Setter Property="Margin" Value="0,12,0,12" />
+            <Setter Property="VerticalContentAlignment" Value="Center" />
+        </Style>
+        <Style TargetType="DataGrid">
+            <Setter Property="AutoGenerateColumns" Value="False" />
+            <Setter Property="IsReadOnly" Value="True" />
+            <Setter Property="CanUserAddRows" Value="False" />
+            <Setter Property="GridLinesVisibility" Value="Horizontal" />
+            <Setter Property="HorizontalGridLinesBrush" Value="#DEE5EB" />
+            <Setter Property="HeadersVisibility" Value="Column" />
+            <Setter Property="RowHeight" Value="32" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="White" />
+            <Setter Property="RowBackground" Value="White" />
+            <Setter Property="ColumnHeaderStyle">
+                <Setter.Value>
+                    <Style TargetType="DataGridColumnHeader">
+                        <Setter Property="Background" Value="#EDF1F5" />
+                        <Setter Property="Foreground" Value="{StaticResource Muted}" />
+                        <Setter Property="Padding" Value="8" />
+                        <Setter Property="BorderThickness" Value="0" />
+                        <Setter Property="FontSize" Value="12" />
                     </Style>
-                </Button.Style>
-            </Button>
-        </StackPanel>
+                </Setter.Value>
+            </Setter>
+        </Style>
+        <DataTemplate x:Key="Graph">
+            <Grid Height="150" Margin="0,12,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="48" />
+                    <ColumnDefinition />
+                </Grid.ColumnDefinitions>
+                <Grid Margin="0,6,0,12">
+                    <TextBlock Text="100%" VerticalAlignment="Top" />
+                    <TextBlock Text="50%" VerticalAlignment="Center" />
+                    <TextBlock Text="0%" VerticalAlignment="Bottom" />
+                </Grid>
+                <Viewbox Grid.Column="1" Stretch="Fill" Margin="0,6,0,12">
+                    <Canvas Width="600" Height="130">
+                        <Line X1="0" Y1="0" X2="600" Y2="0" Stroke="#DEE5EB" />
+                        <Line X1="0" Y1="65" X2="600" Y2="65" Stroke="#DEE5EB" />
+                        <Line X1="0" Y1="130" X2="600" Y2="130" Stroke="#DEE5EB" />
+                        <Polyline Points="{Binding UsagePoints, Mode=OneWay}" Stroke="#147D73" StrokeThickness="2" />
+                    </Canvas>
+                </Viewbox>
+            </Grid>
+        </DataTemplate>
+        <DataTemplate x:Key="Overview">
+            <StackPanel>
+                <DockPanel>
+                    <Button Content="Проверить память" Command="{Binding OpenTestCommand}" Style="{StaticResource Primary}" DockPanel.Dock="Right" HorizontalAlignment="Right" />
+                    <TextBlock Text="Обзор" Style="{StaticResource Heading}" />
+                </DockPanel>
+                <UniformGrid Columns="4">
+                    <Border Style="{StaticResource Card}" Margin="0,0,12,12">
+                        <StackPanel>
+                            <TextBlock Text="Всего памяти" Style="{StaticResource Label}" ToolTip="Объём физической памяти, доступный Windows после аппаратного резерва." />
+                            <TextBlock Text="{Binding TotalText}" Style="{StaticResource Value}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Margin="0,0,12,12">
+                        <StackPanel>
+                            <TextBlock Text="Используется" Style="{StaticResource Label}" />
+                            <TextBlock Text="{Binding UsedText}" Style="{StaticResource Value}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}" Margin="0,0,12,12">
+                        <StackPanel>
+                            <TextBlock Text="Доступно" Style="{StaticResource Label}" />
+                            <TextBlock Text="{Binding AvailableText}" Style="{StaticResource Value}" />
+                        </StackPanel>
+                    </Border>
+                    <Border Style="{StaticResource Card}">
+                        <StackPanel>
+                            <TextBlock Text="Скорость" Style="{StaticResource Label}" ToolTip="Настроенная скорость из сведений Windows. Текущие аппаратные частоты показаны ниже, если доступны." />
+                            <TextBlock Text="{Binding SpeedText}" Style="{StaticResource Value}" />
+                        </StackPanel>
+                    </Border>
+                </UniformGrid>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="16" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <Button Content="Обновить" Command="{Binding RefreshModulesCommand}" DockPanel.Dock="Right" HorizontalAlignment="Right" />
+                                    <TextBlock Text="Модули памяти" Style="{StaticResource Section}" />
+                                </DockPanel>
+                                <ComboBox ItemsSource="{Binding ModulesMemory}" SelectedItem="{Binding SelectedModule}" Margin="0,0,0,16">
+                                    <ComboBox.ItemTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal">
+                                                <TextBlock Text="{Binding RAM_bankLabel}" FontWeight="SemiBold" Margin="0,0,12,0" />
+                                                <TextBlock Text="{Binding DisplayName}" />
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </ComboBox.ItemTemplate>
+                                </ComboBox>
+                                <StackPanel DataContext="{Binding SelectedModule}">
+                                    <TextBlock Text="{Binding RAM_partNumber, FallbackValue=Нет данных}" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,0,0,16" />
+                                    <Grid>
+                                        <Grid.Resources>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Margin" Value="0,0,0,12" />
+                                                <Setter Property="TextWrapping" Value="Wrap" />
+                                            </Style>
+                                        </Grid.Resources>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="170" />
+                                            <ColumnDefinition />
+                                        </Grid.ColumnDefinitions>
+                                        <Grid.RowDefinitions>
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                            <RowDefinition Height="Auto" />
+                                        </Grid.RowDefinitions>
+                                        <TextBlock Text="Объём, ГБ" />
+                                        <TextBlock Grid.Column="1" Text="{Binding size_GB}" />
+                                        <TextBlock Grid.Row="1" Text="Тип" />
+                                        <TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding RAM_type}" />
+                                        <TextBlock Grid.Row="2" Text="Форм-фактор" />
+                                        <TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding RAM_formFactor}" />
+                                        <TextBlock Grid.Row="3" Text="Серийный номер" />
+                                        <TextBlock Grid.Row="3" Grid.Column="1" Text="{Binding RAM_serialNumber}" />
+                                        <TextBlock Grid.Row="4" Text="Слот" />
+                                        <TextBlock Grid.Row="4" Grid.Column="1" Text="{Binding RAM_deviceLocator}" />
+                                        <TextBlock Grid.Row="5" Text="Банк" />
+                                        <TextBlock Grid.Row="5" Grid.Column="1" Text="{Binding RAM_bankLabel}" />
+                                        <TextBlock Grid.Row="6" Text="Скорость, MT/s" ToolTip="Настроенная скорость из сведений Windows." />
+                                        <TextBlock Grid.Row="6" Grid.Column="1" Text="{Binding RAM_speed_MT_s}" />
+                                        <TextBlock Grid.Row="7" Text="Напряжение, В" ToolTip="Настроенное напряжение из сведений Windows. Измеренные напряжения показаны в датчиках, если доступны." />
+                                        <TextBlock Grid.Row="7" Grid.Column="1" Text="{Binding RAM_voltage_V}" />
+                                    </Grid>
+                                </StackPanel>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <DockPanel>
+                                    <Button Content="Измерить скорость" Command="{Binding BenchmarkCommand}" DockPanel.Dock="Right" HorizontalAlignment="Right" />
+                                    <TextBlock Text="Производительность" Style="{StaticResource Section}" />
+                                </DockPanel>
+                                <TextBlock Text="{Binding BenchmarkText}" TextWrapping="Wrap" Margin="0,8,0,0" />
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                    <StackPanel Grid.Column="2">
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Тайминги и датчики" Style="{StaticResource Section}" />
+                                <TextBlock Text="{Binding HardwareStatus}" Style="{StaticResource Label}" />
+                                <Button Content="Запустить от администратора" Click="Administrator_Click" IsEnabled="{Binding CanConfigure}" Visibility="{Binding NeedsAdministrator, Converter={StaticResource Visible}}" HorizontalAlignment="Left" Margin="0,8,0,0" />
+                                <DataGrid ItemsSource="{Binding HardwareReadings}" Visibility="{Binding HasHardwareReadings, Converter={StaticResource Visible}}" MaxHeight="260" Margin="0,8,0,0">
+                                    <DataGrid.RowStyle>
+                                        <Style TargetType="DataGridRow">
+                                            <Setter Property="ToolTip" Value="{Binding Source}" />
+                                        </Style>
+                                    </DataGrid.RowStyle>
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Группа" Binding="{Binding Group}" Width="130" />
+                                        <DataGridTextColumn Header="Параметр" Binding="{Binding Name}" Width="*" />
+                                        <DataGridTextColumn Header="Значение" Binding="{Binding Value}" Width="*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </StackPanel>
+                        </Border>
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="Загрузка памяти" Style="{StaticResource Section}" />
+                                <ContentControl Content="{Binding}" ContentTemplate="{StaticResource Graph}" />
+                                <WrapPanel Margin="0,12,0,0">
+                                    <TextBlock Text="Выделено системой: " />
+                                    <TextBlock Text="{Binding CommittedText}" FontWeight="SemiBold" Margin="0,0,20,0" />
+                                    <TextBlock Text="Кэш: " />
+                                    <TextBlock Text="{Binding CacheText}" FontWeight="SemiBold" />
+                                </WrapPanel>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
+                </Grid>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="Testing">
+            <StackPanel>
+                <TextBlock Text="Тестирование" Style="{StaticResource Heading}" />
+                <Border>
+                    <Border.Style>
+                        <Style TargetType="Border" BasedOn="{StaticResource Card}">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding IsRunning}" Value="True">
+                                    <Setter Property="Visibility" Value="Collapsed" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Border.Style>
+                    <StackPanel IsEnabled="{Binding CanConfigure}">
+                        <TextBlock Text="Режим" Style="{StaticResource Label}" />
+                        <ComboBox ItemsSource="{Binding Modes}" SelectedIndex="{Binding ModeIndex}" Margin="0,0,0,20" />
+                        <TextBlock Text="Объём проверки" Style="{StaticResource Label}" />
+                        <TextBlock Text="{Binding TestMemoryText}" Style="{StaticResource Value}" />
+                        <Slider Minimum="64" Maximum="{Binding MaxMemoryMiB, Mode=OneWay}" Value="{Binding MemoryMiB}" TickFrequency="16" IsSnapToTickEnabled="True" Margin="0,4,0,16" />
+                        <TextBlock Style="{StaticResource Label}">
+                            <Run Text="Доступно: " />
+                            <Run Text="{Binding AvailableText, Mode=OneWay}" />
+                        </TextBlock>
+                        <TextBlock Text="Сохраните документы перед проверкой." Style="{StaticResource Label}" />
+                        <Button Content="Начать проверку" Command="{Binding StartCommand}" Style="{StaticResource Primary}" HorizontalAlignment="Left" Margin="0,12,0,0" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Visibility="{Binding IsRunning, Converter={StaticResource Visible}}">
+                    <StackPanel>
+                        <DockPanel>
+                            <TextBlock Text="{Binding PercentText}" Style="{StaticResource Value}" DockPanel.Dock="Right" HorizontalAlignment="Right" />
+                            <TextBlock Text="{Binding Stage}" Style="{StaticResource Section}" />
+                        </DockPanel>
+                        <ProgressBar Value="{Binding Percent, Mode=OneWay}" Height="10" Foreground="{StaticResource Accent}" BorderThickness="0" Margin="0,8,0,20" />
+                        <WrapPanel>
+                            <TextBlock Text="Прошло: " />
+                            <TextBlock Text="{Binding ElapsedText}" FontWeight="Bold" Margin="0,0,24,0" />
+                            <TextBlock Text="Проход: " />
+                            <TextBlock Text="{Binding PassText}" FontWeight="Bold" Margin="0,0,24,0" />
+                            <TextBlock Text="Ошибок: " />
+                            <TextBlock Text="{Binding ErrorCountText}" FontWeight="Bold" />
+                        </WrapPanel>
+                        <Expander Header="Журнал" Margin="0,20">
+                            <ListBox ItemsSource="{Binding Events}" MaxHeight="160" BorderThickness="0" FontSize="12" />
+                        </Expander>
+                        <Button Content="Остановить" Command="{Binding StopCommand}" Foreground="#BD3B45" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="Results">
+            <StackPanel>
+                <TextBlock Text="Результаты" Style="{StaticResource Heading}" />
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="История проверок пуста">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Label}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding HasHistory}" Value="True">
+                                            <Setter Property="Visibility" Value="Collapsed" />
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <ListBox ItemsSource="{Binding History}" SelectedItem="{Binding SelectedResult}" MaxHeight="180" BorderThickness="0">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid Margin="4,8">
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="190" />
+                                            <ColumnDefinition Width="230" />
+                                            <ColumnDefinition Width="230" />
+                                        </Grid.ColumnDefinitions>
+                                        <TextBlock Text="{Binding StartedText}" />
+                                        <TextBlock Grid.Column="1" Text="{Binding Description}" />
+                                        <TextBlock Grid.Column="2" Text="{Binding StatusText}" Foreground="{Binding StatusColor}" FontWeight="SemiBold" />
+                                    </Grid>
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}" Visibility="{Binding HasHistory, Converter={StaticResource Visible}}">
+                    <StackPanel>
+                        <StackPanel DataContext="{Binding SelectedResult}">
+                            <TextBlock Text="{Binding StatusText}" Foreground="{Binding StatusColor}" Style="{StaticResource Section}" />
+                            <TextBlock Text="{Binding Detail}" TextWrapping="Wrap" />
+                            <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" Margin="0,8,0,20" />
+                            <WrapPanel>
+                                <TextBlock Text="Объём: " />
+                                <TextBlock Text="{Binding MemoryText}" FontWeight="Bold" Margin="0,0,20,0" />
+                                <TextBlock Text="Время: " />
+                                <TextBlock Text="{Binding DurationText}" FontWeight="Bold" Margin="0,0,20,0" />
+                                <TextBlock Text="Проходов: " />
+                                <TextBlock Text="{Binding Passes}" FontWeight="Bold" Margin="0,0,20,0" />
+                                <TextBlock Text="Ошибок: " />
+                                <TextBlock Text="{Binding ErrorCount}" FontWeight="Bold" />
+                            </WrapPanel>
+                            <Expander Header="Ошибки" Visibility="{Binding HasErrors, Converter={StaticResource Visible}}" Margin="0,16,0,0">
+                                <DataGrid ItemsSource="{Binding Errors}" MaxHeight="220">
+                                    <DataGrid.Columns>
+                                        <DataGridTextColumn Header="Смещение" Binding="{Binding OffsetText}" Width="*" />
+                                        <DataGridTextColumn Header="Ожидалось" Binding="{Binding ExpectedText}" Width="*" />
+                                        <DataGridTextColumn Header="Прочитано" Binding="{Binding ActualText}" Width="*" />
+                                        <DataGridTextColumn Header="Этап" Binding="{Binding Stage}" Width="2*" />
+                                    </DataGrid.Columns>
+                                </DataGrid>
+                            </Expander>
+                            <Expander Header="Подробности" Margin="0,16">
+                                <StackPanel>
+                                    <TextBlock Text="{Binding Algorithms}" TextWrapping="Wrap" />
+                                    <TextBlock Text="{Binding Configuration}" TextWrapping="Wrap" Margin="0,12" />
+                                    <ItemsControl ItemsSource="{Binding Events}" FontSize="12" />
+                                </StackPanel>
+                            </Expander>
+                        </StackPanel>
+                        <WrapPanel>
+                            <Button Content="HTML" Tag="html" Click="Export_Click" Margin="0,0,12,0" />
+                            <Button Content="CSV" Tag="csv" Click="Export_Click" Margin="0,0,12,0" />
+                            <Button Content="Печать / PDF" Click="Print_Click" />
+                        </WrapPanel>
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+        <DataTemplate x:Key="Settings">
+            <StackPanel>
+                <TextBlock Text="Настройки" Style="{StaticResource Heading}" />
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <TextBlock Text="Обновление мониторинга" Style="{StaticResource Section}" />
+                        <ComboBox ItemsSource="{Binding RefreshOptions}" SelectedIndex="{Binding RefreshIndex}" Width="240" HorizontalAlignment="Left" />
+                    </StackPanel>
+                </Border>
+                <Border Style="{StaticResource Card}">
+                    <StackPanel>
+                        <CheckBox Content="Сохранять историю проверок" IsChecked="{Binding AutoSave}" />
+                        <CheckBox Content="Останавливать при первой ошибке" IsChecked="{Binding StopOnFirstError}" />
+                    </StackPanel>
+                </Border>
+            </StackPanel>
+        </DataTemplate>
+    </Window.Resources>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="190" />
+            <ColumnDefinition />
+        </Grid.ColumnDefinitions>
+        <Border Background="#F0F2F4" Padding="12,24" BorderBrush="#DEE5EB" BorderThickness="0,0,1,0">
+            <DockPanel>
+                <StackPanel DockPanel.Dock="Top" Margin="12,0,0,32">
+                    <TextBlock Text="RAM" FontSize="28" FontWeight="Bold" Foreground="#172B3A" />
+                    <TextBlock Text="Diagnostic Suite" Foreground="#172B3A" Margin="0,4,0,0" />
+                </StackPanel>
+                <ListBox ItemsSource="{Binding Navigation}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" Foreground="#172B3A" VerticalAlignment="Top">
+                    <ListBox.ItemContainerStyle>
+                        <Style TargetType="ListBoxItem">
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            <Setter Property="Margin" Value="0,0,0,6" />
+                            <Setter Property="Padding" Value="10" />
+                        </Style>
+                    </ListBox.ItemContainerStyle>
+                </ListBox>
+            </DockPanel>
+        </Border>
+        <DockPanel Grid.Column="1" Margin="20,20,16,16">
+            <Border DockPanel.Dock="Top" Visibility="{Binding HasNotice, Converter={StaticResource Visible}}" Background="#FFF4DE" CornerRadius="8" Padding="14" Margin="0,0,0,16">
+                <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" Foreground="#9A671D" />
+            </Border>
+            <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                <ContentControl Content="{Binding}" Margin="0,0,8,0">
+                    <ContentControl.Style>
+                        <Style TargetType="ContentControl">
+                            <Setter Property="ContentTemplate" Value="{StaticResource Overview}" />
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding SelectedPage}" Value="1">
+                                    <Setter Property="ContentTemplate" Value="{StaticResource Testing}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding SelectedPage}" Value="2">
+                                    <Setter Property="ContentTemplate" Value="{StaticResource Results}" />
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding SelectedPage}" Value="3">
+                                    <Setter Property="ContentTemplate" Value="{StaticResource Settings}" />
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </ContentControl.Style>
+                </ContentControl>
+            </ScrollViewer>
+        </DockPanel>
     </Grid>
 </Window>
