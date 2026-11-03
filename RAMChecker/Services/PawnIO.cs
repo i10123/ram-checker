@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace RAMChecker.Services;
 
 // Обёртка над драйвером PawnIO: загружает модуль шины SMBus и вызывает его функции.
-public sealed class PawnIO : IDisposable
+public sealed partial class PawnIO : IDisposable
 {
     private const string Lib = "PawnIOLib";
     private readonly IntPtr handle;
@@ -42,12 +42,14 @@ public sealed class PawnIO : IDisposable
             Marshal.ThrowExceptionForHR(result);
     }
 
-    [DllImport(Lib)]
-    private static extern int pawnio_open(out IntPtr handle);
-    [DllImport(Lib)]
-    private static extern int pawnio_load(IntPtr handle, byte[] blob, nuint size);
-    [DllImport(Lib, CharSet = CharSet.Ansi)]
-    private static extern int pawnio_execute(IntPtr handle, string name, long[] input, nuint inSize, long[] output, nuint outSize, out nuint returned);
-    [DllImport(Lib)]
-    private static extern int pawnio_close(IntPtr handle);
+    // [Out] обязателен: по правилам маршалинга массив передаётся только «внутрь», и без атрибута
+    // результат функции драйвера официально не гарантированно возвращается в программу.
+    [LibraryImport(Lib)]
+    private static partial int pawnio_open(out IntPtr handle);
+    [LibraryImport(Lib)]
+    private static partial int pawnio_load(IntPtr handle, byte[] blob, nuint size);
+    [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
+    private static partial int pawnio_execute(IntPtr handle, string name, long[] input, nuint inSize, [Out] long[] output, nuint outSize, out nuint returned);
+    [LibraryImport(Lib)]
+    private static partial int pawnio_close(IntPtr handle);
 }

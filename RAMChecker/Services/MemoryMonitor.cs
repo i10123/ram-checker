@@ -13,7 +13,7 @@ public record MemorySnapshot(ulong Total, ulong Available, ulong? Committed, ulo
     public static long SafeTestBytes(MemorySnapshot s) => (long)Math.Max(0d, s.Available - Math.Max(1073741824d, s.Total * .1));
 }
 
-public static class MemoryMonitor
+public static partial class MemoryMonitor
 {
     // Агрессивная сборка мусора не только освобождает объекты, но и возвращает свободную память Windows.
     public static void ReturnFreeMemory() => GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
@@ -22,7 +22,7 @@ public static class MemoryMonitor
     {
         var m = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
         if (!GlobalMemoryStatusEx(ref m))
-            throw new Win32Exception(Marshal.GetLastWin32Error());
+            throw new Win32Exception(Marshal.GetLastPInvokeError());
         var p = new PerformanceInfo { Size = (uint)Marshal.SizeOf<PerformanceInfo>() };
         bool ok = GetPerformanceInfo(ref p, p.Size);
         return new(m.TotalPhys, m.AvailPhys,
@@ -45,10 +45,11 @@ public static class MemoryMonitor
             KernelTotal, KernelPaged, KernelNonpaged, PageSize;
         public uint HandleCount, ProcessCount, ThreadCount;
     }
-    [DllImport("kernel32.dll", SetLastError = true)]
+    // LibraryImport (.NET 7+) генерирует код вызова Win32 при компиляции, а не во время работы программы.
+    [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GlobalMemoryStatusEx(ref MemoryStatus status);
-    [DllImport("psapi.dll", SetLastError = true)]
+    private static partial bool GlobalMemoryStatusEx(ref MemoryStatus status);
+    [LibraryImport("psapi.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool GetPerformanceInfo(ref PerformanceInfo info, uint size);
+    private static partial bool GetPerformanceInfo(ref PerformanceInfo info, uint size);
 }
