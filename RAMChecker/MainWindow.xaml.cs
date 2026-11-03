@@ -15,6 +15,8 @@ namespace RAMChecker
 
         private async void Window_Loaded(object sender, RoutedEventArgs e) => await ViewModel.InitializeAsync();
 
+        private void Window_Activated(object? sender, EventArgs e) => ViewModel.Test.WindowActivated();
+
         // Закрытие откладывается, пока фоновая проверка не завершится и не сохранит результат.
         private async void Window_Closing(object? sender, CancelEventArgs e)
         {

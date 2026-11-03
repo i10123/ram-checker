@@ -4,13 +4,17 @@
         xmlns:vm="clr-namespace:RAMChecker.ViewModels"
         xmlns:v="clr-namespace:RAMChecker.Views"
         Title="MemScope" Icon="Assets/logo.ico" Width="1280" Height="820" MinWidth="1000" MinHeight="640"
-        WindowStartupLocation="CenterScreen" Loaded="Window_Loaded" Closing="Window_Closing">
+        WindowStartupLocation="CenterScreen" Loaded="Window_Loaded" Closing="Window_Closing" Activated="Window_Activated">
     <Window.Resources>
         <ResourceDictionary Source="Assets/Logo.xaml" />
     </Window.Resources>
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
+    <!-- Ход проверки на значке в панели задач Windows. -->
+    <Window.TaskbarItemInfo>
+        <TaskbarItemInfo ProgressState="{Binding Test.TaskbarState}" ProgressValue="{Binding Test.TaskbarValue}" />
+    </Window.TaskbarItemInfo>
     <Grid>
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="230" />

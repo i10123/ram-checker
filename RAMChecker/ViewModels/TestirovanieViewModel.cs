@@ -1,5 +1,7 @@
 using System.Collections.ObjectModel;
+using System.Media;
 using System.Windows;
+using System.Windows.Shell;
 using RAMChecker.Helpers;
 using RAMChecker.Models;
 using RAMChecker.Services;
@@ -27,6 +29,18 @@ public class TestirovanieViewModel : NabludaemyObject
     public string SpeedText { get; private set; } = "—";
     // Итог последней проверки для плашки на странице; при новом запуске плашка скрывается.
     public DiagnosticResult? Itog { get; private set; }
+    private bool itogNaZnachke;
+
+    // Значок в панели задач: полоса растёт по ходу проверки и краснеет при ошибках.
+    // Итог остаётся на значке, пока пользователь не вернётся в окно.
+    public TaskbarItemProgressState TaskbarState => (active ?? (itogNaZnachke ? Itog : null)) switch
+    {
+        null => TaskbarItemProgressState.None,
+        { ErrorCount: > 0 } => TaskbarItemProgressState.Error,
+        { Status: "Running" or "Completed" } => TaskbarItemProgressState.Normal,
+        _ => TaskbarItemProgressState.Paused
+    };
+    public double TaskbarValue => IsRunning ? Percent / 100 : 1;
     public ObzorViewModel Obzor => glavnaya.Obzor;
     public bool IsRunning => cancellation is not null;
     public bool IsIdle => !IsRunning;
@@ -141,7 +155,16 @@ public class TestirovanieViewModel : NabludaemyObject
         cancellation.Dispose();
         cancellation = null;
         MemoryMonitor.ReturnFreeMemory(); // Убираем накопившиеся за проверку снимки прогресса.
+        // Если окно свёрнуто или в фоне, о завершении сообщают итог на значке и системный звук.
+        itogNaZnachke = !Application.Current.MainWindow.IsActive;
+        (result.HasErrors ? SystemSounds.Hand : SystemSounds.Asterisk).Play();
         Changed();
+    }
+
+    public void WindowActivated()
+    {
+        itogNaZnachke = false;
+        Changed(nameof(TaskbarState));
     }
 
     private void Log(string text)
