@@ -24,9 +24,15 @@ namespace RAMChecker
                 return;
             e.Cancel = true;
             IsEnabled = false;
-            await ViewModel.ShutdownAsync();
+            try
+            {
+                await ViewModel.ShutdownAsync();
+            }
+            catch (Exception) { } // Сбой при завершении не должен оставить окно открытым и отключённым.
             closeAllowed = true;
-            Close();
+            // Если ждать было нечего, мы всё ещё внутри обработчика Closing, а вызывать Close в нём WPF запрещает.
+            // InvokeAsync выполнит закрытие сразу после выхода из обработчика; ждать его здесь не нужно.
+            _ = Dispatcher.InvokeAsync(Close);
         }
     }
 }

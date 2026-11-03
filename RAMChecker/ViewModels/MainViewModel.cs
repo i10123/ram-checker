@@ -13,6 +13,7 @@ public class MainViewModel : NabludaemyObject
     // Мониторинг обновляется раз в секунду.
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool historyWritable = true;
+    private Task loading = Task.CompletedTask;
 
     public ObzorViewModel Obzor { get; }
     public TestirovanieViewModel Test { get; }
@@ -80,7 +81,8 @@ public class MainViewModel : NabludaemyObject
         }
         Obzor.Tick();
         timer.Start();
-        await Obzor.LoadModulesAsync();
+        loading = Obzor.LoadModulesAsync();
+        await loading;
     }
 
     public void AddResult(DiagnosticResult result)
@@ -110,10 +112,13 @@ public class MainViewModel : NabludaemyObject
         catch (Exception ex) { Notice = "Не удалось сохранить историю: " + ex.Message; }
     }
 
+    // Драйвер SPD освобождается только после фоновых операций, которые к нему обращаются: загрузки модулей
+    // и чтения температуры. Замер скорости не ждём — он работает лишь со своими массивами и завершится вместе с процессом.
     public async Task ShutdownAsync()
     {
         timer.Stop();
         await Test.StopAsync();
-        Obzor.Dispose();
+        await loading;
+        await Obzor.ShutdownAsync();
     }
 }

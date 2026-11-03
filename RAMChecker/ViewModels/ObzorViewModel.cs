@@ -12,7 +12,7 @@ namespace RAMChecker.ViewModels;
 public record Stolbec(string Name, string Value, double Width);
 
 // Страница «Обзор»: модули памяти, загрузка в реальном времени и замер скорости.
-public class ObzorViewModel : NabludaemyObject, IDisposable
+public class ObzorViewModel : NabludaemyObject
 {
     private readonly MainViewModel glavnaya;
     private readonly Queue<double> samples = new();
@@ -127,14 +127,24 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
         }
         catch (Exception ex) { glavnaya.Notice = "Мониторинг недоступен: " + ex.Message; }
         if (spd is not null && temperatureTask is not { IsCompleted: false })
-            temperatureTask = Task.Run(() =>
-            {
-                foreach (var m in ModulesMemory.Where(m => m.SpdAddress != 0))
-                    m.RAM_temperature = spd.Temperature(m.SpdAddress) is double t ? $"{t:0.0} °C" : ModuleMemoryModel.NetDannyh;
-            });
+            temperatureTask = ReadTemperatureAsync(spd);
         Changed(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText), nameof(CommitText), nameof(CommitUsed), nameof(CommitFree));
-        if (spd is not null)
-            Changed(nameof(ModuleRows));
+    }
+
+    // Шина SMBus медленная, поэтому температура читается в фоне, а в модули записывается уже в потоке интерфейса:
+    // экран не застаёт модули посреди изменения и обновляется сразу, как только значения готовы.
+    private async Task ReadTemperatureAsync(SpdReader reader)
+    {
+        var modules = ModulesMemory.Where(m => m.SpdAddress != 0).ToArray();
+        double?[] values;
+        try
+        {
+            values = await Task.Run(() => modules.Select(m => reader.Temperature(m.SpdAddress)).ToArray());
+        }
+        catch (Exception) { values = new double?[modules.Length]; } // Сбой шины — температура неизвестна.
+        for (int i = 0; i < modules.Length; i++)
+            modules[i].RAM_temperature = values[i] is double t ? $"{t:0.0} °C" : ModuleMemoryModel.NetDannyh;
+        Changed(nameof(ModuleRows));
     }
 
     // График последних 60 измерений в области 600 × 160; заливка замыкается по нижнему краю.
@@ -192,9 +202,11 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
         catch (Exception) { } // Пользователь отменил запрос UAC — продолжаем без прав администратора.
     }
 
-    public void Dispose()
+    // Закрытие ждёт чтение температуры, иначе фоновый поток обратился бы к уже освобождённому драйверу.
+    public async Task ShutdownAsync()
     {
-        temperatureTask?.Wait();
+        if (temperatureTask is not null)
+            await temperatureTask;
         spd?.Dispose();
     }
 }
