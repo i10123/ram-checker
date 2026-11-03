@@ -7,12 +7,13 @@ namespace RAMChecker.Services;
 public record DiagnosticProgress(string Stage, int Pass, int Passes, double Percent, TimeSpan Elapsed, long ErrorCount, long ProcessedBytes, byte[]? Map);
 
 // Собственный алгоритм «Свой адрес с инверсией». Один проход состоит из трёх шагов:
-// 1) в каждую ячейку записывается значение шаблона: в нечётных проходах — вычисленное из её адреса,
-//    в чётных — шахматный шаблон, где у соседних ячеек противоположные биты;
+// 1) в каждую ячейку записывается значение шаблона; четыре шаблона сменяют друг друга по проходам:
+//    свой адрес, шахматный, бегущая единица, случайный;
 // 2) прямой обход: ячейка сверяется со своим значением, затем в неё пишется инверсия;
 // 3) обратный обход: сверяется инверсия, затем возвращается исходное значение.
 // Шаблон адреса находит ошибки адресации (две ячейки отвечают по одному адресу),
-// шахматный — влияние соседних ячеек друг на друга; шаги 2–3 — «залипшие» биты.
+// шахматный — влияние соседних ячеек друг на друга, бегущая единица — замыкание соседних линий данных
+// внутри слова, случайный — ошибки, которые проявляются только на определённых данных; шаги 2–3 — «залипшие» биты.
 public static class MemoryDiagnosticService
 {
     public const string Algorithm = "Свой адрес с инверсией";
@@ -21,14 +22,30 @@ public static class MemoryDiagnosticService
     // Waiting — блок уже проверялся без ошибок, но текущий проход до него ещё не дошёл.
     public const byte NotChecked = 0, Ok = 1, Error = 2, Waiting = 3;
     private static readonly string[] Steps = ["Заполнение", "Проверка вперёд", "Проверка назад"];
+    private static readonly string[] Patterns = ["Свой адрес", "Шахматный шаблон", "Бегущая единица", "Случайный шаблон"];
 
     // Шаблон адреса: умножение на нечётное число взаимно однозначно, поэтому соседние ячейки хранят разные значения.
-    // Шахматный шаблон: 1010… и 0101… чередуются через ячейку и меняются местами с каждым чётным проходом.
-    public static uint Pattern(long address, int pass) => pass % 2 == 1
-        ? unchecked((uint)address * 0x9E3779B1u + (uint)pass * 0x7F4A7C15u)
-        : ((address + pass / 2) & 1) == 0 ? 0xAAAAAAAAu : 0x55555555u;
+    // Шахматный шаблон: 1010… и 0101… чередуются через ячейку и меняются местами каждые четыре прохода.
+    // Бегущая единица: в слове один единичный бит, у соседней ячейки он сдвинут на разряд; инверсия даёт бегущий ноль.
+    // Случайный шаблон: адрес перемешивается сдвигами xorshift, поэтому значение можно заново вычислить при проверке.
+    public static uint Pattern(long address, int pass) => ((pass - 1) % 4) switch
+    {
+        0 => Adres(address, pass),
+        1 => ((address + pass / 4) & 1) == 0 ? 0xAAAAAAAAu : 0x55555555u,
+        2 => 1u << (int)((address + pass) % 32),
+        _ => Xorshift(Adres(address, pass))
+    };
 
-    public static string PatternName(int pass) => pass % 2 == 1 ? "Свой адрес" : "Шахматный шаблон";
+    private static uint Adres(long address, int pass) => unchecked((uint)address * 0x9E3779B1u + (uint)pass * 0x7F4A7C15u);
+
+    private static uint Xorshift(uint x)
+    {
+        x ^= x << 13;
+        x ^= x >> 17;
+        return x ^ x << 5;
+    }
+
+    public static string PatternName(int pass) => Patterns[(pass - 1) % 4];
 
     public static void FillBlock(Span<uint> block, long start, int pass)
     {
