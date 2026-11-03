@@ -50,8 +50,9 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1">
-                    <!-- Итог последней проверки: цвет и значок как в списке результатов. Пока итога нет, содержимого нет. -->
-                    <ContentControl Content="{Binding Itog}">
+                    <!-- Итог последней проверки: цвет и значок как в списке результатов. Без итога шаблон
+                         отрисовался бы с пустыми данными, поэтому плашка скрыта. -->
+                    <ContentControl Content="{Binding Itog}" Visibility="{Binding HasItog, Converter={StaticResource Vidimost}}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate>
                                 <Border x:Name="Fon" CornerRadius="8" Padding="20,16" Margin="0,0,16,16"

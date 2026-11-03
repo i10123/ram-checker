@@ -29,6 +29,9 @@ public class TestirovanieViewModel : NabludaemyObject
     public string SpeedText { get; private set; } = "—";
     // Итог последней проверки для плашки на странице; при новом запуске плашка скрывается.
     public DiagnosticResult? Itog { get; private set; }
+    // Плашка нужна только для настоящего итога: остановку пользователь выбрал сам, о ней сообщает заголовок.
+    // Найденные до остановки ошибки показываются всегда.
+    public bool HasItog => Itog is { HasErrors: true } or { Status: not "Stopped" };
     private bool itogNaZnachke;
 
     // Значок в панели задач: полоса растёт по ходу проверки и краснеет при ошибках.
