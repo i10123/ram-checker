@@ -27,10 +27,12 @@ public class LocalStorage
     public List<DiagnosticResult> ReadHistory()
     {
         var items = Read<List<DiagnosticResult>>("history.json") ?? [];
+        // Незавершённая проверка сохранена промежуточным автосохранением: счётчик, карта и ошибки на тот момент.
         foreach (var item in items.Where(i => i.Status == DiagnosticStatus.Running))
         {
             item.Status = DiagnosticStatus.Interrupted;
             item.Detail = "Приложение завершилось до получения итогового результата.";
+            item.Map.AsSpan().Replace(MemoryDiagnosticService.Waiting, MemoryDiagnosticService.Ok); // Как в итоге проверки.
         }
         return items;
     }

@@ -134,8 +134,7 @@ public class TestirovanieViewModel : NabludaemyObject
             if (p.Passes > session.Passes)
                 Log($"Проход {p.Passes} завершён, ошибок: {p.ErrorCount}");
             (Stage, Percent, PassText) = (p.Stage, p.Percent, p.Pass.ToString());
-            session.ElapsedSeconds = p.Elapsed.TotalSeconds;
-            (session.ErrorCount, session.Passes) = (p.ErrorCount, p.Passes);
+            session.ApplyProgress(p);
             Changed();
         });
         // Запуск с ключом --imitaciya добавляет искусственную ошибку, чтобы показать, как выглядит неисправная память.

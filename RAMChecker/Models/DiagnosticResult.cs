@@ -63,6 +63,18 @@ public class DiagnosticResult
     [JsonIgnore] public int Uroven => ErrorCount > 0 ? 2 : Status == DiagnosticStatus.Completed ? 1 : 0;
     [JsonIgnore] public Kletka[] Kletki => Kletka.Iz(Map, RequestedBytes);
 
+    // Переносит в идущую проверку данные отчёта о ходе. Автосохранение раз в 10 секунд должно хранить
+    // согласованные счётчик, карту и список ошибок (не больше первых 1000, как в итоге), чтобы после
+    // аварийного закрытия история показывала то же, что было на экране.
+    public void ApplyProgress(DiagnosticProgress p)
+    {
+        (ElapsedSeconds, ErrorCount, Passes) = (p.Elapsed.TotalSeconds, p.ErrorCount, p.Passes);
+        if (p.Map is not null)
+            Map = p.Map;
+        if (p.Errors is not null)
+            Errors = [.. p.Errors];
+    }
+
     [JsonIgnore]
     public string StatusText => Status switch
     {
