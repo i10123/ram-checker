@@ -57,6 +57,8 @@
                         <TextBlock Text="Модуль памяти" Style="{StaticResource Podzagolovok}" />
                         <ComboBox ItemsSource="{Binding ModulesMemory}" SelectedItem="{Binding SelectedModule}"
                                   DisplayMemberPath="DisplayName" Margin="0,0,0,12" HorizontalAlignment="Stretch" />
+                        <TextBlock Text="Чтение сведений о модулях…" Style="{StaticResource Podpis}"
+                                   Visibility="{Binding Loading, Converter={StaticResource Vidimost}}" />
                         <ItemsControl ItemsSource="{Binding ModuleRows}" ItemTemplate="{StaticResource StrokaTablicy}" />
                         <TextBlock Text="{Binding SpdStatus}" Style="{StaticResource Podpis}" Margin="0,12,0,0" />
                     </StackPanel>

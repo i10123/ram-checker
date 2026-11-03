@@ -42,7 +42,9 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
     public GridLength CommitFree => new(Memory is { Committed: ulong c, CommitLimit: ulong l } && l > c ? l - c : 1, GridUnitType.Star);
     public List<KeyValuePair<string, string>> MemoryRows { get; private set; } = [];
     public string AvailableText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Available);
-    public string ModulesText => $"{ModulesMemory.Count} шт. · {ModulesMemory.FirstOrDefault()?.RAM_type ?? "—"}";
+    // Пока WMI и SPD читаются в фоне, вместо пустого списка показывается состояние загрузки.
+    public bool Loading { get; private set; } = true;
+    public string ModulesText => Loading ? "…" : $"{ModulesMemory.Count} шт. · {ModulesMemory.FirstOrDefault()?.RAM_type ?? "—"}";
 
     public ObzorViewModel(MainViewModel glavnaya)
     {
@@ -83,6 +85,8 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
             SelectedModule = ModulesMemory.FirstOrDefault();
         }
         catch (Exception ex) { glavnaya.Notice = "Не удалось получить сведения о модулях: " + ex.Message; }
+        Loading = false;
+        Changed(nameof(Loading), nameof(ModulesText));
     }
 
     // Паспорт SPD сопоставляется с модулями WMI по порядку слотов.
