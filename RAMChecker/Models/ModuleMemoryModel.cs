@@ -1,48 +1,31 @@
 namespace RAMChecker.Models
 {
-    // Хранит характеристики одного устройства оперативной памяти для таблицы.
+    // Характеристики одного модуля памяти: паспорт из WMI, тайминги и температура из SPD.
     public class ModuleMemoryModel
     {
-        public string RAM_serialNumber { get; set; } = "Недоступно";
-        public string DisplayName => maker + " · " + size_GB + " ГБ";
-        // Объём устройства памяти в гигабайтах.
-        public int size_GB
-        {
-            get; set;
-        }
+        public const string NetDannyh = "Нет данных";
 
-        // Название производителя устройства памяти.
-        public string maker { get; set; } = "Недоступно";
+        public int size_GB { get; set; }
+        public string maker { get; set; } = NetDannyh;
+        public string RAM_partNumber { get; set; } = NetDannyh;
+        public string RAM_serialNumber { get; set; } = NetDannyh;
+        public string RAM_type { get; set; } = NetDannyh;
+        public string RAM_formFactor { get; set; } = NetDannyh;
+        public string RAM_slot { get; set; } = NetDannyh;
+        public string RAM_voltage { get; set; } = NetDannyh;
 
-        // Номер детали, который позволяет определить конкретную модель памяти.
-        public string RAM_partNumber { get; set; } = "Недоступно";
+        // Текущая скорость из настроек Windows и номинальная из SPD, в MT/s.
+        public string RAM_speed { get; set; } = NetDannyh;
+        public string RAM_nominalSpeed { get; set; } = NetDannyh;
 
-        // Поколение памяти, например DDR4 или DDR5.
-        public string RAM_type { get; set; } = "Недоступно";
+        // Тайминги CL-tRCD-tRP-tRAS и tRC в тактах по паспорту SPD.
+        public string RAM_timings { get; set; } = NetDannyh;
+        public string RAM_tRC { get; set; } = NetDannyh;
+        public string RAM_temperature { get; set; } = NetDannyh;
 
-        // Физический форм-фактор, например SO-DIMM.
-        public string RAM_formFactor { get; set; } = "Недоступно";
+        // Адрес SPD на шине SMBus; ноль, если паспорт не прочитан.
+        public byte SpdAddress { get; set; }
 
-        // Тактовая частота памяти в мегагерцах.
-        public string RAM_frequency_MHz { get; set; } = "Недоступно";
-
-        // Эффективная скорость передачи данных в миллионах передач в секунду.
-        public string RAM_speed_MT_s { get; set; } = "Недоступно";
-
-        // Настроенное напряжение памяти в вольтах.
-        public string RAM_voltage_V { get; set; } = "Недоступно";
-
-        // Ширина шины данных устройства в битах.
-        public string RAM_dataWidth_bits { get; set; } = "Недоступно";
-
-        // Полная ширина устройства с учётом дополнительных битов, если они есть.
-        public string RAM_totalWidth_bits { get; set; } = "Недоступно";
-
-        // Обозначение расположения устройства памяти в системе.
-        public string RAM_deviceLocator { get; set; } = "Недоступно";
-
-        // Название банка памяти, указанное прошивкой компьютера.
-        public string RAM_bankLabel { get; set; } = "Недоступно";
-
+        public string DisplayName => $"{RAM_slot} · {maker} {size_GB} ГБ";
     }
 }

@@ -7,10 +7,12 @@
         <UseWPF>true</UseWPF>
         <AssemblyName>RAMChecker</AssemblyName>
         <RootNamespace>RAMChecker</RootNamespace>
-        <RestoreAdditionalProjectSources>$(MSBuildThisFileDirectory)..\vendor</RestoreAdditionalProjectSources>
+        <!-- Тема Fluent встроена в WPF, но помечена как предварительная. -->
+        <NoWarn>$(NoWarn);WPF0001</NoWarn>
     </PropertyGroup>
     <ItemGroup>
         <PackageReference Include="System.Management" Version="10.0.12" />
-        <PackageReference Include="ZenStates-Core" Version="1.0.0-local.869b7e8" />
+        <!-- Подписанные модули драйвера PawnIO для шины SMBus (AMD и Intel). -->
+        <EmbeddedResource Include="Drivers\*.bin" />
     </ItemGroup>
 </Project>
