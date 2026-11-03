@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Text.Json.Serialization;
 using RAMChecker.Services;
 
@@ -39,8 +40,10 @@ public record Kletka(int Index, byte State, long BlockBytes)
 }
 
 // Итог одной проверки памяти; сохраняется в историю и выгружается в отчёт.
-public class DiagnosticResult
+// Во время проверки на странице результатов показан этот же объект, поэтому он сообщает экрану об изменениях.
+public class DiagnosticResult : INotifyPropertyChanged
 {
+    public event PropertyChangedEventHandler? PropertyChanged;
     public DateTimeOffset Started { get; set; } = DateTimeOffset.Now;
     public string Mode { get; set; } = "Быстрая";
     public DiagnosticStatus Status { get; set; } = DiagnosticStatus.Running;
@@ -56,7 +59,8 @@ public class DiagnosticResult
     public byte[] Map { get; set; } = new byte[MemoryDiagnosticService.MapSize];
 
     [JsonIgnore] public string StartedText => Started.ToLocalTime().ToString("dd MMMM yyyy, HH:mm");
-    [JsonIgnore] public string DurationText => TimeSpan.FromSeconds(ElapsedSeconds).ToString(@"hh\:mm\:ss");
+    // Часы считаются целиком, без перехода в сутки: циклическая проверка может идти дольше 24 часов.
+    [JsonIgnore] public string DurationText => $"{(long)(ElapsedSeconds / 3600):00}:{TimeSpan.FromSeconds(ElapsedSeconds):mm':'ss}";
     [JsonIgnore] public string MemoryText => MemorySnapshot.Format((ulong)RequestedBytes);
     // Объём, прошедший хотя бы один полный проход: после первого прохода — весь буфер, до него — только
     // зелёные блоки карты. При ранней остановке запрошенный объём проверен не весь.
@@ -81,6 +85,8 @@ public class DiagnosticResult
             Map = p.Map;
         if (p.Errors is not null)
             Errors = [.. p.Errors];
+        // Пустое имя свойства — все привязки к объекту перечитываются, в том числе вычисляемые (статус, карта).
+        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
     }
 
     [JsonIgnore]
