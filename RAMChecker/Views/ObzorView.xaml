@@ -5,6 +5,18 @@
         <StackPanel Margin="16,24,16,8">
             <TextBlock Text="Обзор" Style="{StaticResource Zagolovok}" />
 
+            <!-- Без прав администратора драйвер недоступен: предлагаем перезапуск. -->
+            <Border Style="{StaticResource Kartochka}" Visibility="{Binding NeedsAdministrator, Converter={StaticResource Vidimost}}">
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="Перезапустить от администратора" Command="{Binding AdministratorCommand}"
+                            Style="{DynamicResource AccentButtonStyle}" VerticalAlignment="Center" />
+                    <StackPanel VerticalAlignment="Center">
+                        <TextBlock Text="Тайминги и температура недоступны" FontWeight="SemiBold" />
+                        <TextBlock Text="Для чтения паспорта SPD нужны права администратора." Style="{StaticResource Podpis}" />
+                    </StackPanel>
+                </DockPanel>
+            </Border>
+
             <!-- Сводка по памяти системы. -->
             <UniformGrid Columns="4">
                 <Border Style="{StaticResource Kartochka}">
@@ -47,24 +59,58 @@
                                   DisplayMemberPath="DisplayName" Margin="0,0,0,12" HorizontalAlignment="Stretch" />
                         <ItemsControl ItemsSource="{Binding ModuleRows}" ItemTemplate="{StaticResource StrokaTablicy}" />
                         <TextBlock Text="{Binding SpdStatus}" Style="{StaticResource Podpis}" Margin="0,12,0,0" />
-                        <Button Content="Перезапустить от администратора" Command="{Binding AdministratorCommand}" Margin="0,12,0,0"
-                                Visibility="{Binding NeedsAdministrator, Converter={StaticResource Vidimost}}" />
                     </StackPanel>
                 </Border>
 
                 <StackPanel Grid.Column="1">
                     <!-- График загрузки памяти за последние 60 измерений. -->
                     <Border Style="{StaticResource Kartochka}">
-                        <StackPanel>
-                            <TextBlock Text="Загрузка памяти" Style="{StaticResource Podzagolovok}" />
-                            <Viewbox Stretch="Fill" Height="140">
-                                <Canvas Width="600" Height="120" ClipToBounds="True">
-                                    <Line X1="0" Y1="60" X2="600" Y2="60" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="4 4" />
-                                    <Polyline Points="{Binding UsagePoints}" Stroke="{DynamicResource AccentFillColorDefaultBrush}" StrokeThickness="2.5" />
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="170" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto" />
+                                <ColumnDefinition />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Grid.ColumnSpan="2" Text="Загрузка памяти" Style="{StaticResource Podzagolovok}" />
+                            <TextBlock Grid.ColumnSpan="2" Text="{Binding LoadText}" HorizontalAlignment="Right" FontSize="20"
+                                       FontWeight="SemiBold" Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+
+                            <!-- Шкала процентов слева от графика. -->
+                            <DockPanel Grid.Row="1" Margin="0,0,8,0">
+                                <TextBlock DockPanel.Dock="Top" Text="100%" Style="{StaticResource Podpis}" FontSize="11" />
+                                <TextBlock DockPanel.Dock="Bottom" Text="0%" Style="{StaticResource Podpis}" FontSize="11" />
+                                <TextBlock Text="50%" Style="{StaticResource Podpis}" FontSize="11" VerticalAlignment="Center" />
+                            </DockPanel>
+
+                            <!-- Область графика: сетка, заливка под линией и сама линия. -->
+                            <Viewbox Grid.Row="1" Grid.Column="1" Stretch="Fill">
+                                <Canvas Width="600" Height="160" ClipToBounds="True">
+                                    <Line X1="0" Y1="1" X2="600" Y2="1" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                                    <Line X1="0" Y1="40" X2="600" Y2="40" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
+                                    <Line X1="0" Y1="80" X2="600" Y2="80" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
+                                    <Line X1="0" Y1="120" X2="600" Y2="120" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
+                                    <Line X1="0" Y1="159" X2="600" Y2="159" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                                    <Polygon Points="{Binding UsageArea}" Fill="{DynamicResource AccentFillColorDefaultBrush}">
+                                        <Polygon.OpacityMask>
+                                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                                <GradientStop Color="#70000000" Offset="0" />
+                                                <GradientStop Color="#08000000" Offset="1" />
+                                            </LinearGradientBrush>
+                                        </Polygon.OpacityMask>
+                                    </Polygon>
+                                    <Polyline Points="{Binding UsagePoints}" Stroke="{DynamicResource AccentFillColorDefaultBrush}"
+                                              StrokeThickness="2" StrokeLineJoin="Round" />
                                 </Canvas>
                             </Viewbox>
-                            <TextBlock Text="0–100 %, последние 60 измерений" Style="{StaticResource Podpis}" Margin="0,8,0,0" />
-                        </StackPanel>
+                            <DockPanel Grid.Row="2" Grid.Column="1" Margin="0,6,0,0">
+                                <TextBlock DockPanel.Dock="Right" Text="сейчас" Style="{StaticResource Podpis}" FontSize="11" />
+                                <TextBlock Text="60 секунд назад" Style="{StaticResource Podpis}" FontSize="11" />
+                            </DockPanel>
+                        </Grid>
                     </Border>
 
                     <!-- Замер скорости: столбцы пропорциональны лучшему результату. -->

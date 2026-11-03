@@ -23,6 +23,7 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
     public ObservableCollection<ModuleMemoryModel> ModulesMemory { get; } = [];
     public MemorySnapshot? Memory { get; private set; }
     public PointCollection UsagePoints { get; private set; } = [];
+    public PointCollection UsageArea { get; private set; } = [];
     public List<Stolbec> BenchmarkBars { get; private set; } = [];
     public string BenchmarkText { get; private set; } = "Замер ещё не выполнялся";
     public bool BenchmarkRunning { get; private set; }
@@ -33,6 +34,7 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
 
     public string TotalText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Total);
     public string UsedText => Memory is null ? "—" : $"{MemorySnapshot.Format(Memory.Used)} · {Memory.Load:0}%";
+    public string LoadText => Memory is null ? "—" : $"{Memory.Load:0}%";
     public string AvailableText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Available);
     public string ModulesText => $"{ModulesMemory.Count} шт. · {ModulesMemory.FirstOrDefault()?.RAM_type ?? "—"}";
 
@@ -70,8 +72,6 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
             var modules = await Task.Run(() => new WmiServiceMemory().GetModulesMemory());
             if (!NeedsAdministrator)
                 await Task.Run(() => ReadSpd(modules));
-            else
-                SpdStatus = "Тайминги и температура доступны при запуске от администратора.";
             foreach (var m in modules)
                 ModulesMemory.Add(m);
             SelectedModule = ModulesMemory.FirstOrDefault();
@@ -92,8 +92,9 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
                 m.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
                 m.RAM_timings = $"{info.CL}-{info.RCD}-{info.RP}-{info.RAS}";
                 m.RAM_tRC = info.RC.ToString();
+                // Датчик температуры есть не на всех планках: о нём сообщает байт 14 паспорта SPD.
                 if (!info.HasSensor)
-                    m.SpdAddress = 0;
+                    (m.SpdAddress, m.RAM_temperature) = (0, "Датчика на модуле нет");
             }
             SpdStatus = infos.Count == 0 ? "Микросхемы SPD не найдены на шине SMBus." : "";
         }
@@ -109,10 +110,10 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
             samples.Enqueue(Memory.Load);
             if (samples.Count > 60)
                 samples.Dequeue();
-            // График последних 60 измерений в области 600 × 120.
-            var points = new PointCollection(samples.Select((load, i) => new Point((60 - samples.Count + i) * 600 / 59d, 120 - load * 1.2)));
-            points.Freeze();
-            UsagePoints = points;
+            // График последних 60 измерений в области 600 × 160; заливка замыкается по нижнему краю.
+            var line = samples.Select((load, i) => new Point((60 - samples.Count + i) * 600 / 59d, 160 - load * 1.6)).ToList();
+            UsagePoints = new PointCollection(line);
+            UsageArea = new PointCollection(line.Append(new(600, 160)).Append(new(line[0].X, 160)));
         }
         catch (Exception ex) { glavnaya.Notice = "Мониторинг недоступен: " + ex.Message; }
         if (spd is not null && temperatureTask is not { IsCompleted: false })
@@ -138,6 +139,7 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
             BenchmarkText = $"Задержка: {r.LatencyNs:0.0} нс";
         }
         catch (Exception ex) { BenchmarkText = "Замер не выполнен: " + ex.Message; }
+        GC.Collect(); // Буферы замера больше не нужны — возвращаем память системе.
         BenchmarkRunning = false;
         Changed();
     }

@@ -9,7 +9,7 @@ namespace RAMChecker.Services
         public List<ModuleMemoryModel> GetModulesMemory()
         {
             var modulesMemory = new List<ModuleMemoryModel>();
-            var query = "SELECT Capacity, Manufacturer, PartNumber, SerialNumber, SMBIOSMemoryType, FormFactor, ConfiguredClockSpeed, ConfiguredVoltage, DeviceLocator FROM Win32_PhysicalMemory";
+            var query = "SELECT Capacity, Manufacturer, PartNumber, SerialNumber, SMBIOSMemoryType, FormFactor, ConfiguredClockSpeed, ConfiguredVoltage, DeviceLocator, BankLabel FROM Win32_PhysicalMemory";
 
             using var searcher = new ManagementObjectSearcher(query);
             using var foundModules = searcher.Get();
@@ -20,13 +20,15 @@ namespace RAMChecker.Services
                 var voltage = Convert.ToUInt32(module["ConfiguredVoltage"]);
                 modulesMemory.Add(new ModuleMemoryModel
                 {
+                    Number = modulesMemory.Count + 1,
                     size_GB = (int)(Convert.ToUInt64(module["Capacity"]) >> 30),
                     maker = GetTextValue(module["Manufacturer"]),
                     RAM_partNumber = GetTextValue(module["PartNumber"]),
                     RAM_serialNumber = GetTextValue(module["SerialNumber"]),
                     RAM_type = GetMemoryType(Convert.ToUInt32(module["SMBIOSMemoryType"])),
                     RAM_formFactor = GetFormFactor(Convert.ToUInt32(module["FormFactor"])),
-                    RAM_slot = GetTextValue(module["DeviceLocator"]),
+                    // На многих платах слоты разных каналов называются одинаково, поэтому добавляем банк.
+                    RAM_slot = $"{GetTextValue(module["BankLabel"])} · {GetTextValue(module["DeviceLocator"])}",
                     RAM_speed = speed > 0 ? $"{speed} MT/s ({speed / 2} МГц)" : ModuleMemoryModel.NetDannyh,
                     RAM_voltage = voltage > 0 ? $"{voltage / 1000m:0.00} В" : ModuleMemoryModel.NetDannyh
                 });

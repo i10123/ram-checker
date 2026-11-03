@@ -5,6 +5,7 @@ namespace RAMChecker.Models
     {
         public const string NetDannyh = "Нет данных";
 
+        public int Number { get; set; }
         public int size_GB { get; set; }
         public string maker { get; set; } = NetDannyh;
         public string RAM_partNumber { get; set; } = NetDannyh;
@@ -26,6 +27,6 @@ namespace RAMChecker.Models
         // Адрес SPD на шине SMBus; ноль, если паспорт не прочитан.
         public byte SpdAddress { get; set; }
 
-        public string DisplayName => $"{RAM_slot} · {maker} {size_GB} ГБ";
+        public string DisplayName => $"Модуль {Number} · {maker} {RAM_partNumber}";
     }
 }
