@@ -11,6 +11,20 @@ public record MemoryError(long Offset, uint Expected, uint Actual, string Stage,
     public string ActualText => $"0x{Actual:X8}";
 }
 
+// Клетка карты памяти: состояние блока буфера и подсказка с его диапазоном адресов.
+public record Kletka(int Index, byte State, long BlockBytes)
+{
+    public string Tip => $"Блок {Index + 1} · 0x{Index * BlockBytes:X9}–0x{(Index + 1) * BlockBytes - 1:X9} · " + State switch
+    {
+        MemoryDiagnosticService.Error => "найдены ошибки",
+        MemoryDiagnosticService.NotChecked => "ещё не проверен",
+        MemoryDiagnosticService.Waiting => "ждёт текущего прохода",
+        _ => "без ошибок"
+    };
+
+    public static Kletka[] Iz(byte[] map, long bytes) => [.. map.Select((state, i) => new Kletka(i, state, bytes / map.Length))];
+}
+
 // Итог одной проверки памяти; сохраняется в историю и выгружается в отчёт.
 public class DiagnosticResult
 {
@@ -32,6 +46,9 @@ public class DiagnosticResult
     [JsonIgnore] public string MemoryText => MemorySnapshot.Format((ulong)RequestedBytes);
     [JsonIgnore] public string Description => $"{Mode} · {DurationText} · {MemoryText}";
     [JsonIgnore] public bool HasErrors => ErrorCount > 0;
+    // Уровень для цвета в списке: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки.
+    [JsonIgnore] public int Uroven => ErrorCount > 0 ? 2 : Status == "Completed" ? 1 : 0;
+    [JsonIgnore] public Kletka[] Kletki => Kletka.Iz(Map, RequestedBytes);
 
     [JsonIgnore]
     public string StatusText => Status switch
