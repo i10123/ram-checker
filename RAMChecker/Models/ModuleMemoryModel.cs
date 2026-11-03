@@ -3,8 +3,13 @@ namespace RAMChecker.Models
     // Хранит характеристики одного устройства оперативной памяти для таблицы.
     public class ModuleMemoryModel
     {
+        public string RAM_serialNumber { get; set; } = "Недоступно";
+        public string DisplayName => maker + " · " + size_GB + " ГБ";
         // Объём устройства памяти в гигабайтах.
-        public int size_GB { get; set; }
+        public int size_GB
+        {
+            get; set;
+        }
 
         // Название производителя устройства памяти.
         public string maker { get; set; } = "Недоступно";
@@ -39,16 +44,5 @@ namespace RAMChecker.Models
         // Название банка памяти, указанное прошивкой компьютера.
         public string RAM_bankLabel { get; set; } = "Недоступно";
 
-        // CAS Latency: задержка между запросом столбца и получением данных.
-        public string RAM_CL { get; set; } = "Недоступно";
-
-        // Задержка между выбором строки и столбца в памяти.
-        public string RAM_tRCD { get; set; } = "Недоступно";
-
-        // Задержка закрытия строки памяти.
-        public string RAM_tRP { get; set; } = "Недоступно";
-
-        // Минимальное время активности строки памяти.
-        public string RAM_tRAS { get; set; } = "Недоступно";
     }
 }

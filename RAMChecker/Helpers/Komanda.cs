@@ -1,4 +1,3 @@
-using System;
 using System.Windows.Input;
 
 namespace RAMChecker.Helpers
@@ -6,36 +5,29 @@ namespace RAMChecker.Helpers
     // Связывает действие из ViewModel с кнопкой или другим элементом WPF.
     public class Komanda : ICommand
     {
-        // Действие, которое команда выполняет при запуске.
-        private readonly Action<object?> deistvie;
+        private readonly Action execute;
 
-        // Необязательная проверка, разрешено ли сейчас запускать команду.
-        private readonly Predicate<object?>? uslovieDostupnosti;
+        private readonly Func<bool>? canExecute;
 
-        // WPF подписывается на событие, чтобы узнать об изменении доступности команды.
         public event EventHandler? CanExecuteChanged;
 
-        // Сохраняет действие команды и необязательную проверку доступности.
-        public Komanda(Action<object?> deistvie, Predicate<object?>? uslovieDostupnosti = null)
+        public Komanda(Action execute, Func<bool>? canExecute = null)
         {
-            this.deistvie = deistvie;
-            this.uslovieDostupnosti = uslovieDostupnosti;
+            this.execute = execute;
+            this.canExecute = canExecute;
         }
 
-        // Возвращает true, если команду сейчас можно выполнить.
         public bool CanExecute(object? parameter)
         {
-            return uslovieDostupnosti?.Invoke(parameter) ?? true;
+            return canExecute?.Invoke() ?? true;
         }
 
-        // Выполняет сохранённое действие.
         public void Execute(object? parameter)
         {
-            deistvie(parameter);
+            execute();
         }
 
-        // Сообщает WPF, что результат проверки доступности мог измениться.
-        public void SoobshitObIzmeneniiDostupnosti()
+        public void Refresh()
         {
             CanExecuteChanged?.Invoke(this, EventArgs.Empty);
         }

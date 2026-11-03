@@ -5,7 +5,7 @@ using RAMChecker.Models;
 namespace RAMChecker.Services
 {
     // Сервис, который получает сведения о физических устройствах памяти из WMI Windows.
-    public class WmiServiceMemory : IServisMemory
+    public class WmiServiceMemory
     {
         // Получает доступные характеристики каждого устройства оперативной памяти.
         public List<ModuleMemoryModel> GetModulesMemory()
@@ -13,7 +13,7 @@ namespace RAMChecker.Services
             var modulesMemory = new List<ModuleMemoryModel>();
 
             // Запрашиваем технические свойства памяти, которые доступны в Win32_PhysicalMemory.
-            var query = "SELECT Capacity, Manufacturer, PartNumber, SMBIOSMemoryType, FormFactor, ConfiguredClockSpeed, ConfiguredVoltage, DataWidth, TotalWidth, DeviceLocator, BankLabel FROM Win32_PhysicalMemory";
+            var query = "SELECT Capacity, Manufacturer, PartNumber, SerialNumber, SMBIOSMemoryType, FormFactor, ConfiguredClockSpeed, ConfiguredVoltage, DataWidth, TotalWidth, DeviceLocator, BankLabel FROM Win32_PhysicalMemory";
 
             using (var searcher = new ManagementObjectSearcher(query))
             using (var foundModules = searcher.Get())
@@ -34,10 +34,9 @@ namespace RAMChecker.Services
                     var memoryType = GetMemoryType(Convert.ToUInt32(module["SMBIOSMemoryType"]));
                     var formFactor = GetFormFactor(Convert.ToUInt32(module["FormFactor"]));
 
-                    // На этом ноутбуке WMI возвращает эффективную скорость DDR как 3200.
-                    // Делим её пополам, чтобы отдельно показать тактовую частоту 1600 МГц.
+                    // Для DDR скорость передачи вдвое больше тактовой частоты.
                     var configuredClockSpeed = Convert.ToUInt32(module["ConfiguredClockSpeed"]);
-                    var frequencyMHz = configuredClockSpeed > 0
+                    var frequencyMHz = configuredClockSpeed > 0 && memoryType.Contains("DDR")
                         ? (configuredClockSpeed / 2).ToString(CultureInfo.CurrentCulture)
                         : "Недоступно";
                     var transferSpeed = configuredClockSpeed > 0
@@ -59,6 +58,7 @@ namespace RAMChecker.Services
                         size_GB = size_GB,
                         maker = maker,
                         RAM_partNumber = partNumber,
+                        RAM_serialNumber = GetTextValue(module["SerialNumber"]),
                         RAM_type = memoryType,
                         RAM_formFactor = formFactor,
                         RAM_frequency_MHz = frequencyMHz,
@@ -67,12 +67,7 @@ namespace RAMChecker.Services
                         RAM_dataWidth_bits = dataWidth,
                         RAM_totalWidth_bits = totalWidth,
                         RAM_deviceLocator = deviceLocator,
-                        RAM_bankLabel = bankLabel,
-                        // Стандартный класс WMI не возвращает эти четыре значения таймингов.
-                        RAM_CL = "Недоступно",
-                        RAM_tRCD = "Недоступно",
-                        RAM_tRP = "Недоступно",
-                        RAM_tRAS = "Недоступно"
+                        RAM_bankLabel = bankLabel
                     });
                 }
             }
