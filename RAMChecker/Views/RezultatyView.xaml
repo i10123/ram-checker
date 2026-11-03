@@ -28,8 +28,7 @@
                                     <ColumnDefinition />
                                 </Grid.ColumnDefinitions>
                                 <Border x:Name="Polosa" Width="4" CornerRadius="2" Margin="0,0,10,0" Background="{DynamicResource SystemFillColorCautionBrush}" />
-                                <TextBlock x:Name="Znachok" Grid.Column="1" Text="&#xE7BA;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets"
-                                           FontSize="16" Margin="0,2,10,0" Foreground="{DynamicResource SystemFillColorCautionBrush}" />
+                                <TextBlock Grid.Column="1" Style="{StaticResource ZnachokStatusa}" Margin="0,2,10,0" />
                                 <StackPanel Grid.Column="2">
                                     <TextBlock Text="{Binding StatusText}" FontWeight="SemiBold" />
                                     <TextBlock Text="{Binding StartedText}" Style="{StaticResource Podpis}" />
@@ -39,13 +38,9 @@
                             <DataTemplate.Triggers>
                                 <DataTrigger Binding="{Binding Uroven}" Value="1">
                                     <Setter TargetName="Polosa" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
-                                    <Setter TargetName="Znachok" Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
-                                    <Setter TargetName="Znachok" Property="Text" Value="&#xE73E;" />
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Uroven}" Value="2">
                                     <Setter TargetName="Polosa" Property="Background" Value="{DynamicResource SystemFillColorCriticalBrush}" />
-                                    <Setter TargetName="Znachok" Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
-                                    <Setter TargetName="Znachok" Property="Text" Value="&#xEA39;" />
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>

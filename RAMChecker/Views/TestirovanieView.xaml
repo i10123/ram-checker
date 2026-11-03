@@ -50,6 +50,32 @@
                 </StackPanel>
 
                 <StackPanel Grid.Column="1">
+                    <!-- Итог последней проверки: цвет и значок как в списке результатов. Пока итога нет, содержимого нет. -->
+                    <ContentControl Content="{Binding Itog}">
+                        <ContentControl.ContentTemplate>
+                            <DataTemplate>
+                                <Border x:Name="Fon" CornerRadius="8" Padding="20,16" Margin="0,0,16,16"
+                                        Background="{DynamicResource SystemFillColorCautionBackgroundBrush}">
+                                    <DockPanel>
+                                        <TextBlock Style="{StaticResource ZnachokStatusa}" FontSize="28" Margin="0,0,16,0" VerticalAlignment="Center" />
+                                        <StackPanel>
+                                            <TextBlock Text="{Binding StatusText}" FontSize="18" FontWeight="SemiBold" />
+                                            <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" Margin="0,4,0,0" />
+                                        </StackPanel>
+                                    </DockPanel>
+                                </Border>
+                                <DataTemplate.Triggers>
+                                    <DataTrigger Binding="{Binding Uroven}" Value="1">
+                                        <Setter TargetName="Fon" Property="Background" Value="{DynamicResource SystemFillColorSuccessBackgroundBrush}" />
+                                    </DataTrigger>
+                                    <DataTrigger Binding="{Binding Uroven}" Value="2">
+                                        <Setter TargetName="Fon" Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}" />
+                                    </DataTrigger>
+                                </DataTemplate.Triggers>
+                            </DataTemplate>
+                        </ContentControl.ContentTemplate>
+                    </ContentControl>
+
                     <!-- Ход проверки. -->
                     <Border Style="{StaticResource Kartochka}">
                         <StackPanel>

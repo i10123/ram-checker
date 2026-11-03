@@ -25,11 +25,14 @@ public class TestirovanieViewModel : NabludaemyObject
     public string PassText { get; private set; } = "—";
     public Kletka[] Kletki { get; private set; } = Kletka.Iz(new byte[MemoryDiagnosticService.MapSize], 0);
     public string SpeedText { get; private set; } = "—";
+    // Итог последней проверки для плашки на странице; при новом запуске плашка скрывается.
+    public DiagnosticResult? Itog { get; private set; }
     public ObzorViewModel Obzor => glavnaya.Obzor;
     public bool IsRunning => cancellation is not null;
     public bool IsIdle => !IsRunning;
-    public string ElapsedText => active?.DurationText ?? "00:00:00";
-    public string ErrorCountText => (active?.ErrorCount ?? 0).ToString();
+    // После завершения цифры берутся из итога, чтобы они совпадали с плашкой.
+    public string ElapsedText => (active ?? Itog)?.DurationText ?? "00:00:00";
+    public string ErrorCountText => ((active ?? Itog)?.ErrorCount ?? 0).ToString();
     // Для циклического и стресс-режима длительность не задана — оставшееся время неизвестно.
     public string RemainingText => active is not null && Durations[ModeIndex] is { } d
         ? TimeSpan.FromSeconds(Math.Max(0, d.TotalSeconds - active.ElapsedSeconds)).ToString(@"hh\:mm\:ss") : "—";
@@ -94,7 +97,7 @@ public class TestirovanieViewModel : NabludaemyObject
                 $"{m.RAM_slot}: {m.maker} {m.RAM_partNumber}, {m.size_GB} ГБ, {m.RAM_speed}, тайминги {m.RAM_timings}"))
         };
         cancellation = new();
-        lastSaved = 0;
+        (lastSaved, Itog) = (0, null);
         Events.Clear();
         Log($"Запуск: {session.Mode}, {TestMemoryText}");
         glavnaya.AddResult(session);
@@ -134,7 +137,7 @@ public class TestirovanieViewModel : NabludaemyObject
         glavnaya.SelectedResult = result;
         glavnaya.SaveHistory();
         Log(result.StatusText);
-        (Stage, Kletki, Percent, SpeedText, active) = (result.StatusText, result.Kletki, result.Status == "Completed" ? 100 : Percent, "—", null);
+        (Stage, Kletki, Percent, SpeedText, active, Itog) = (result.StatusText, result.Kletki, result.Status == "Completed" ? 100 : Percent, "—", null, result);
         cancellation.Dispose();
         cancellation = null;
         MemoryMonitor.ReturnFreeMemory(); // Убираем накопившиеся за проверку снимки прогресса.
