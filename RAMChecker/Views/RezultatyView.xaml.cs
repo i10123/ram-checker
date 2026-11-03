@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using System.Windows;
@@ -12,7 +13,7 @@ public partial class RezultatyView : UserControl
 {
     public RezultatyView() => InitializeComponent();
 
-    // Сохраняет HTML-отчёт выбранной проверки в файл, который выберет пользователь.
+    // Сохраняет HTML-отчёт выбранной проверки и сразу открывает его в браузере.
     private void Export_Click(object sender, RoutedEventArgs e)
     {
         if (((Button)sender).DataContext is not DiagnosticResult result)
@@ -23,6 +24,7 @@ public partial class RezultatyView : UserControl
         try
         {
             File.WriteAllText(dialog.FileName, ReportExporter.Html(result), new UTF8Encoding(true));
+            Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
         }
         catch (Exception ex) { MessageBox.Show(ex.Message, "Не удалось сохранить отчёт", MessageBoxButton.OK, MessageBoxImage.Error); }
     }
