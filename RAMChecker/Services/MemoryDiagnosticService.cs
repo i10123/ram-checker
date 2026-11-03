@@ -72,8 +72,9 @@ public static class MemoryDiagnosticService
     }
 
     // Буфер выделяется вне сборщика мусора: после проверки память сразу возвращается Windows.
+    // imitation — искусственная ошибка для проверки отображения: после заполнения в одном блоке переворачивается бит.
     public static unsafe Task<DiagnosticResult> RunAsync(long bytes, TimeSpan? duration, bool stopOnFirstError,
-        IProgress<DiagnosticProgress> progress, CancellationToken token) => Task.Run(() =>
+        IProgress<DiagnosticProgress> progress, CancellationToken token, bool imitation = false) => Task.Run(() =>
     {
         var result = new DiagnosticResult { RequestedBytes = bytes };
         var clock = Stopwatch.StartNew();
@@ -137,7 +138,11 @@ public static class MemoryDiagnosticService
                         int b = step == 2 ? MapSize - 1 - k : k;
                         long start = (long)b * blockWords;
                         if (step == 0)
+                        {
                             FillBlock(Block(b), start, pass);
+                            if (imitation && b == MapSize / 3)
+                                Block(b)[7] ^= 1u << 5;
+                        }
                         // Клетка карты зеленеет, когда её блок прошёл текущий проход без ошибок.
                         else if (CheckBlock(Block(b), start, pass, step == 2, (a, e, r) => OnError(b, a, e, r)) == 0 && step == 2 && result.Map[b] != Error)
                             result.Map[b] = Ok;

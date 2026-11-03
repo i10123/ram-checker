@@ -118,7 +118,11 @@ public class TestirovanieViewModel : NabludaemyObject
             (session.ErrorCount, session.Passes) = (p.ErrorCount, p.Passes);
             Changed();
         });
-        var task = MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], StopOnError, progress, cancellation.Token);
+        // Запуск с ключом --imitaciya добавляет искусственную ошибку, чтобы показать, как выглядит неисправная память.
+        bool imitation = Environment.GetCommandLineArgs().Contains("--imitaciya");
+        if (imitation)
+            Log("Имитация ошибки памяти включена");
+        var task = MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], StopOnError, progress, cancellation.Token, imitation);
         running = task;
         var result = await task;
         result.Started = session.Started;
