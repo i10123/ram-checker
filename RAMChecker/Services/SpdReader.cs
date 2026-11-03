@@ -86,7 +86,8 @@ public sealed class SpdReader : IDisposable
         int cl = Math.Max(first, aa);
         while (cl < first + 30 && (supported >> (cl - first) & 1) == 0)
             cl++;
-        if (cl == first + 30 || new[] { aa, rcd, rp, ras, rc }.Min() <= 0)
+        // ">=": расчётная задержка могла с самого начала оказаться выше списка, и тогда цикл не выполнялся ни разу.
+        if (cl >= first + 30 || new[] { aa, rcd, rp, ras, rc }.Min() <= 0)
             return null;
         // Объём планки: ёмкость кристалла × число кристаллов на шине (ширина шины / ширина кристалла) × ранги,
         // у сборок 3DS ещё × число кристаллов в корпусе. Нужен, чтобы сверить паспорт с модулем из WMI.
