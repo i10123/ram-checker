@@ -25,15 +25,22 @@ public class LocalStorage
         File.Move(temp, path, overwrite: true);
     }
     // Правильный JSON может содержать неверные данные (файл правили вручную или он повреждён): такие записи
-    // пропускаются, иначе они сломали бы карту и отчёт. Исходный файл сохраняется рядом, потому что
-    // следующее сохранение истории его перезапишет.
+    // пропускаются, иначе они сломали бы карту и отчёт. Записи разбираются по одной: неизвестный статус или
+    // поле не того типа портят только свою запись, а не всю историю. Исходный файл сохраняется рядом,
+    // потому что следующее сохранение истории его перезапишет.
     public List<DiagnosticResult> ReadHistory(out int skipped)
     {
-        var all = Read<List<DiagnosticResult?>>("history.json") ?? [];
-        var items = all.Where(i => i is { Mode: not null, Detail: not null, Configuration: not null, Errors: not null,
-                Map.Length: MemoryDiagnosticService.MapSize, RequestedBytes: >= 0, ErrorCount: >= 0, Passes: >= 0, ElapsedSeconds: >= 0 and < 1e9 }
-            && Enum.IsDefined(i.Status) && i.Map.All(s => s <= MemoryDiagnosticService.Waiting) && !i.Errors.Contains(null!))
-            .Select(i => i!).ToList();
+        var all = Read<List<JsonElement>>("history.json") ?? [];
+        var items = new List<DiagnosticResult>();
+        foreach (var element in all)
+        {
+            try
+            {
+                if (element.Deserialize<DiagnosticResult>(options) is { } i && IsValid(i))
+                    items.Add(i);
+            }
+            catch (JsonException) { } // Запись не разбирается — пропускаем её.
+        }
         skipped = all.Count - items.Count;
         if (skipped > 0)
             File.Copy(Path.Combine(DirectoryPath, "history.json"), Path.Combine(DirectoryPath, "history.bad.json"), overwrite: true);
@@ -46,4 +53,8 @@ public class LocalStorage
         }
         return items;
     }
+
+    private static bool IsValid(DiagnosticResult i) => i is { Mode: not null, Detail: not null, Configuration: not null, Errors: not null,
+            Map.Length: MemoryDiagnosticService.MapSize, RequestedBytes: >= 0, ErrorCount: >= 0, Passes: >= 0, ElapsedSeconds: >= 0 and < 1e9 }
+        && Enum.IsDefined(i.Status) && i.Map.All(s => s <= MemoryDiagnosticService.Waiting) && !i.Errors.Contains(null!);
 }

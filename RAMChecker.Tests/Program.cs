@@ -140,6 +140,11 @@ File.WriteAllText(historyPath, """[{"Status": "Stopped"}, {"Status": "Completed"
 var checkedHistory = storage.ReadHistory(out int skippedRecords);
 Check(checkedHistory.Count == 1 && skippedRecords == 3 && File.Exists(Path.Combine(storage.DirectoryPath, "history.bad.json")),
     "записи с пустой или отсутствующей картой и неизвестным статусом пропускаются, исходный файл сохранён");
+File.WriteAllText(historyPath, """[{"Status": "Stopped"}, {"Status": "UnknownStatus"}, {"Status": "Completed", "Passes": "abc"}, 5]""");
+bool readable = true;
+try { checkedHistory = storage.ReadHistory(out skippedRecords); }
+catch (System.Text.Json.JsonException) { readable = false; }
+Check(readable && checkedHistory.Count == 1 && skippedRecords == 3, "неизвестный статус и неверный тип поля не мешают прочитать остальные записи");
 int notices = 0;
 early.PropertyChanged += (_, _) => notices++;
 early.ApplyProgress(new("", 1, 1, 0, TimeSpan.FromHours(25), 1, 0, null, null));
