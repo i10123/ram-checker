@@ -23,6 +23,3 @@ docs/
 vendor/
 *.nupkg
 *.log
-
-# Самопроверки разработки
-RAMChecker.Tests/
