@@ -68,7 +68,7 @@ public class ObzorViewModel : NabludaemyObject
     [
         new("Производитель", m.RAM_maker), new("Модель", m.RAM_partNumber), new("Серийный номер", m.RAM_serialNumber),
         new("Тип", $"{m.RAM_type} {m.RAM_formFactor}"), new("Объём", $"{m.size_GB} ГБ"), new("Слот", m.RAM_slot),
-        new("Текущая частота", m.RAM_speed), new("Номинальная частота", m.RAM_nominalSpeed),
+        new("Текущая частота", m.RAM_speed), new("Паспорт SPD", m.RAM_spd), new("Номинальная частота", m.RAM_nominalSpeed),
         new("Тайминги CL-tRCD-tRP-tRAS", m.RAM_timings), new("tRC", m.RAM_tRC),
         new("Напряжение", m.RAM_voltage), new("Температура", m.RAM_temperature)
     ];
@@ -94,7 +94,8 @@ public class ObzorViewModel : NabludaemyObject
     // У WMI и SPD нет общего признака планки: модель и серийный номер лежат во второй странице SPD, которую
     // программа не читает. Поэтому паспорт сопоставляется по порядку (адреса SPD 0x50, 0x51… и список WMI
     // обычно идут от первого слота), но только если число модулей и объём каждого совпадают — иначе данные
-    // одной планки легко приписать другой, и тайминги не показываются.
+    // одной планки легко приписать другой, и тайминги не показываются. Если объёмы всех планок разные, совпадение
+    // объёма подтверждает пару; если есть одинаковые, их можно перепутать — это отмечено в строке «Паспорт SPD».
     private SpdReader? ReadSpd(List<ModuleMemoryModel> modules)
     {
         SpdReader? reader = null;
@@ -105,13 +106,15 @@ public class ObzorViewModel : NabludaemyObject
             bool matched = infos.Count == modules.Count && modules.Zip(infos).All(p => p.First.size_GB == p.Second.SizeGB);
             SpdStatus = infos.Count == 0 ? "Микросхемы SPD не найдены на шине SMBus."
                 : !matched ? $"Паспорт SPD прочитан у {infos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
-                : modules.Count > 1 ? "Данные SPD отнесены к модулям по порядку слотов." : "";
+                : "";
+            bool assumed = modules.Select(m => m.size_GB).Distinct().Count() < modules.Count;
             // Без сопоставления драйвер не нужен: адреса датчиков температуры модулям не присвоены.
             if (matched)
             {
                 foreach (var (m, info) in modules.Zip(infos))
                 {
                     m.SpdAddress = info.Address;
+                    m.RAM_spd = $"адрес 0x{info.Address:X2}" + (assumed ? " · отнесён по порядку слотов, предположительно" : "");
                     m.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
                     m.RAM_timings = $"{info.CL}-{info.RCD}-{info.RP}-{info.RAS}";
                     m.RAM_tRC = info.RC.ToString();

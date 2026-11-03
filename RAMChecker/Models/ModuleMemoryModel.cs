@@ -24,8 +24,10 @@ namespace RAMChecker.Models
         public string RAM_tRC { get; set; } = NetDannyh;
         public string RAM_temperature { get; set; } = NetDannyh;
 
-        // Адрес SPD на шине SMBus; ноль, если паспорт не прочитан.
+        // Адрес SPD на шине SMBus; ноль, если паспорт не прочитан или на модуле нет датчика температуры.
         public byte SpdAddress { get; set; }
+        // Откуда взят паспорт: адрес микросхемы и пометка, если соответствие планке не подтверждено.
+        public string RAM_spd { get; set; } = NetDannyh;
 
         public string DisplayName => $"Модуль {Number} · {RAM_maker} {RAM_partNumber}";
     }
