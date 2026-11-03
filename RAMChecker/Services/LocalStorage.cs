@@ -27,9 +27,9 @@ public class LocalStorage
     public List<DiagnosticResult> ReadHistory()
     {
         var items = Read<List<DiagnosticResult>>("history.json") ?? [];
-        foreach (var item in items.Where(i => i.Status == "Running"))
+        foreach (var item in items.Where(i => i.Status == DiagnosticStatus.Running))
         {
-            item.Status = "Interrupted";
+            item.Status = DiagnosticStatus.Interrupted;
             item.Detail = "Приложение завершилось до получения итогового результата.";
         }
         return items;

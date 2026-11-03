@@ -3,6 +3,19 @@ using RAMChecker.Services;
 
 namespace RAMChecker.Models;
 
+// Состояние проверки. В history.json хранится названием ("Completed"), как раньше хранились строки,
+// поэтому история прежних версий читается без изменений, а опечатку в названии поймает компилятор.
+[JsonConverter(typeof(JsonStringEnumConverter<DiagnosticStatus>))]
+public enum DiagnosticStatus
+{
+    Running,    // идёт сейчас
+    Completed,  // все проходы завершены
+    Stopped,    // остановлена пользователем
+    Errors,     // остановлена на первой ошибке
+    Failed,     // не выполнена, например не удалось выделить память
+    Interrupted // приложение закрылось во время проверки, в истории промежуточный результат
+}
+
 // Одна найденная ошибка: смещение в буфере, ожидаемое и прочитанное значения.
 public record MemoryError(long Offset, uint Expected, uint Actual, string Stage, int Pass)
 {
@@ -30,7 +43,7 @@ public class DiagnosticResult
 {
     public DateTimeOffset Started { get; set; } = DateTimeOffset.Now;
     public string Mode { get; set; } = "Быстрая";
-    public string Status { get; set; } = "Running";
+    public DiagnosticStatus Status { get; set; } = DiagnosticStatus.Running;
     public long RequestedBytes { get; set; }
     public long AllocatedBytes { get; set; }
     public long ErrorCount { get; set; }
@@ -47,17 +60,17 @@ public class DiagnosticResult
     [JsonIgnore] public string Description => $"{Mode} · {DurationText} · {MemoryText}";
     [JsonIgnore] public bool HasErrors => ErrorCount > 0;
     // Уровень для цвета в списке: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки.
-    [JsonIgnore] public int Uroven => ErrorCount > 0 ? 2 : Status == "Completed" ? 1 : 0;
+    [JsonIgnore] public int Uroven => ErrorCount > 0 ? 2 : Status == DiagnosticStatus.Completed ? 1 : 0;
     [JsonIgnore] public Kletka[] Kletki => Kletka.Iz(Map, RequestedBytes);
 
     [JsonIgnore]
     public string StatusText => Status switch
     {
         _ when ErrorCount > 0 => "Обнаружены ошибки",
-        "Completed" => "Ошибок не обнаружено",
-        "Stopped" => "Проверка остановлена",
-        "Interrupted" => "Проверка прервана",
-        "Failed" => "Проверка не выполнена",
+        DiagnosticStatus.Completed => "Ошибок не обнаружено",
+        DiagnosticStatus.Stopped => "Проверка остановлена",
+        DiagnosticStatus.Interrupted => "Проверка прервана",
+        DiagnosticStatus.Failed => "Проверка не выполнена",
         _ => "Проверка выполняется"
     };
 
@@ -65,8 +78,8 @@ public class DiagnosticResult
     public string Recommendation => Status switch
     {
         _ when ErrorCount > 0 => "Сохраните отчёт. Если включён разгон или XMP, верните штатные настройки BIOS и повторите проверку. Если ошибки остаются, проверяйте планки по одной.",
-        "Completed" => "Ошибок не найдено. При редких сбоях запустите полную или циклическую проверку на большем объёме.",
-        "Failed" => "Уменьшите объём проверки и повторите запуск.",
+        DiagnosticStatus.Completed => "Ошибок не найдено. При редких сбоях запустите полную или циклическую проверку на большем объёме.",
+        DiagnosticStatus.Failed => "Уменьшите объём проверки и повторите запуск.",
         _ => "Проверка не завершена, по ней нельзя судить об исправности памяти."
     };
 }

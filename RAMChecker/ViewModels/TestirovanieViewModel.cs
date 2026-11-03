@@ -31,7 +31,7 @@ public class TestirovanieViewModel : NabludaemyObject
     public DiagnosticResult? Itog { get; private set; }
     // Плашка нужна только для настоящего итога: остановку пользователь выбрал сам, о ней сообщает заголовок.
     // Найденные до остановки ошибки показываются всегда.
-    public bool HasItog => Itog is { HasErrors: true } or { Status: not "Stopped" };
+    public bool HasItog => Itog is { HasErrors: true } or { Status: not DiagnosticStatus.Stopped };
     private bool itogNaZnachke;
 
     // Значок в панели задач: полоса растёт по ходу проверки и краснеет при ошибках.
@@ -40,7 +40,7 @@ public class TestirovanieViewModel : NabludaemyObject
     {
         null => TaskbarItemProgressState.None,
         { ErrorCount: > 0 } => TaskbarItemProgressState.Error,
-        { Status: "Running" or "Completed" } => TaskbarItemProgressState.Normal,
+        { Status: DiagnosticStatus.Running or DiagnosticStatus.Completed } => TaskbarItemProgressState.Normal,
         _ => TaskbarItemProgressState.Paused
     };
     public double TaskbarValue => IsRunning ? Percent / 100 : 1;
@@ -154,7 +154,7 @@ public class TestirovanieViewModel : NabludaemyObject
         glavnaya.SelectedResult = result;
         glavnaya.SaveHistory();
         Log(result.StatusText);
-        (Stage, Kletki, Percent, SpeedText, active, Itog) = (result.StatusText, result.Kletki, result.Status == "Completed" ? 100 : Percent, "—", null, result);
+        (Stage, Kletki, Percent, SpeedText, active, Itog) = (result.StatusText, result.Kletki, result.Status == DiagnosticStatus.Completed ? 100 : Percent, "—", null, result);
         cancellation.Dispose();
         cancellation = null;
         MemoryMonitor.ReturnFreeMemory(); // Убираем накопившиеся за проверку снимки прогресса.

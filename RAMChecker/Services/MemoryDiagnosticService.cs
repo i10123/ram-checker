@@ -154,15 +154,15 @@ public static class MemoryDiagnosticService
                 result.Passes = pass;
                 Report(force: true);
             } while (duration is not { } limit || clock.Elapsed < limit);
-            result.Status = "Completed";
+            result.Status = DiagnosticStatus.Completed;
         }
         catch (OperationCanceledException)
         {
-            result.Status = token.IsCancellationRequested ? "Stopped" : "Errors";
+            result.Status = token.IsCancellationRequested ? DiagnosticStatus.Stopped : DiagnosticStatus.Errors;
         }
         catch (Exception ex)
         {
-            result.Status = "Failed";
+            result.Status = DiagnosticStatus.Failed;
             result.Detail = ex is OutOfMemoryException ? "Не удалось выделить память. Уменьшите объём и повторите проверку." : ex.Message;
         }
         finally

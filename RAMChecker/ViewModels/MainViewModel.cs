@@ -27,7 +27,7 @@ public class MainViewModel : NabludaemyObject
     {
         Obzor = new(this);
         Test = new(this);
-        DeleteResultCommand = new(DeleteResult, () => SelectedResult is { Status: not "Running" });
+        DeleteResultCommand = new(DeleteResult, () => SelectedResult is { Status: not DiagnosticStatus.Running });
         timer.Tick += (_, _) =>
         {
             Obzor.Tick();
