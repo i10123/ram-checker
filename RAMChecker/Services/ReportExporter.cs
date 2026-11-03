@@ -4,37 +4,42 @@ using RAMChecker.Models;
 
 namespace RAMChecker.Services;
 
+// Формирует отчёт о проверке в HTML (с картой памяти) и CSV.
 public static class ReportExporter
 {
     public static string Html(DiagnosticResult r)
     {
-        static string E(string? value) => WebUtility.HtmlEncode(value ?? "");
-        var errors = string.Join("", r.Errors.Select(e => $"<tr><td>{e.OffsetText}</td><td>{e.ExpectedText}</td><td>{e.ActualText}</td><td>{E(e.Stage)}</td><td>{e.Pass}</td></tr>"));
+        static string E(string value) => WebUtility.HtmlEncode(value);
+        // Карта памяти: 32 × 8 клеток, цвет показывает состояние блока буфера.
+        var cells = string.Concat(r.Map.Select((state, i) =>
+            $"<rect x='{i % 32 * 22}' y='{i / 32 * 22}' width='20' height='20' rx='3' fill='{(state == 2 ? "#d13438" : state == 1 ? "#0f7b0f" : "#c8ced6")}'/>"));
+        var rows = string.Concat(new[] { ("Дата", r.StartedText), ("Режим", r.Mode), ("Алгоритм", MemoryDiagnosticService.Algorithm),
+            ("Длительность", r.DurationText), ("Проверено", r.MemoryText), ("Проходов", r.Passes.ToString()), ("Ошибок", r.ErrorCount.ToString()) }
+            .Select(row => $"<tr><td>{row.Item1}</td><td>{E(row.Item2)}</td></tr>"));
+        var errors = string.Concat(r.Errors.Select(e =>
+            $"<tr><td>{e.OffsetText}</td><td>{e.ExpectedText}</td><td>{e.ActualText}</td><td>{E(e.Stage)}</td><td>{e.Pass}</td></tr>"));
         return $$"""
-            <!doctype html><html lang="ru"><meta charset="utf-8"><title>RAM Diagnostic Suite — отчёт</title>
-            <style>body{font:16px 'Segoe UI',sans-serif;color:#172b3a;max-width:960px;margin:48px auto;padding:24px}h1{color:#147d73}table{border-collapse:collapse;width:100%;margin:24px 0}td,th{text-align:left;padding:12px;border-bottom:1px solid #dee5eb}aside{padding:20px;background:#f4f6f8}pre{white-space:pre-wrap}</style>
-            <h1>RAM Diagnostic Suite</h1><h2>{{E(r.StatusText)}}</h2>
-            <table><tr><td>Дата</td><td>{{E(r.StartedText)}}</td></tr><tr><td>Режим</td><td>{{E(r.Mode)}}</td></tr>
-            <tr><td>Продолжительность</td><td>{{E(r.DurationText)}}</td></tr><tr><td>Выделено</td><td>{{E(r.MemoryText)}}</td></tr>
-            <tr><td>Полных проходов</td><td>{{r.Passes}}</td></tr><tr><td>Ошибок</td><td>{{r.ErrorCount}}</td></tr></table>
-            <p>{{E(r.Detail)}}</p><aside>Результат относится к буферу процесса и выполненным тестам. Windows может выгружать страницы. Это не проверка всей физической RAM и не определение неисправной планки.</aside>
-            <h2>Рекомендации</h2><p>{{E(r.Recommendation)}}</p><h2>Методы проверки</h2><p>{{E(r.Algorithms)}}</p>
-            <h2>Конфигурация при запуске</h2><pre>{{E(r.Configuration)}}</pre>
-            <h2>Ошибки (первые 1000)</h2><table><tr><th>Смещение в буфере</th><th>Ожидалось</th><th>Прочитано</th><th>Этап</th><th>Проход</th></tr>{{errors}}</table>
-            <h2>Журнал</h2><pre>{{E(string.Join(Environment.NewLine, r.Events))}}</pre></html>
+            <!doctype html><html lang="ru"><meta charset="utf-8"><title>Отчёт RAM Diagnostic Suite</title>
+            <style>body{font:15px 'Segoe UI',sans-serif;color:#1b1b1b;max-width:900px;margin:40px auto;padding:0 24px}
+            h1{color:#005fb8}table{border-collapse:collapse;width:100%;margin:16px 0}td,th{text-align:left;padding:8px;border-bottom:1px solid #e5e5e5}
+            pre{background:#f5f5f5;padding:12px;white-space:pre-wrap}.legend span{margin-right:16px}</style>
+            <h1>RAM Diagnostic Suite</h1><h2>{{E(r.StatusText)}}</h2><table>{{rows}}</table>
+            <p>{{E(r.Detail)}}</p><h2>Рекомендации</h2><p>{{E(r.Recommendation)}}</p>
+            <h2>Карта памяти</h2><svg width="704" height="176">{{cells}}</svg>
+            <p class="legend"><span style="color:#0f7b0f">■ без ошибок</span><span style="color:#d13438">■ есть ошибки</span><span style="color:#8a8f96">■ не проверено</span></p>
+            <h2>Конфигурация</h2><pre>{{E(r.Configuration)}}</pre>
+            <h2>Ошибки (первые 1000)</h2><table><tr><th>Смещение</th><th>Ожидалось</th><th>Прочитано</th><th>Шаг</th><th>Проход</th></tr>{{errors}}</table></html>
             """;
     }
 
     public static string Csv(DiagnosticResult r)
     {
-        static string Q(string s) => "\"" + ((s.Length > 0 && "=+-@".Contains(s[0])) ? "'" : "") + s.Replace("\"", "\"\"") + "\"";
-        var b = new StringBuilder("Тип;Дата;Статус;Режим;Выделено байт;Секунд;Ошибок;Смещение;Ожидалось;Прочитано;Этап;Проход\r\n");
-        b.AppendLine(string.Join(';', new[] { "Итог", r.Started.ToString("O"), r.StatusText, r.Mode,
-            r.AllocatedBytes.ToString(), r.ElapsedSeconds.ToString("F2", System.Globalization.CultureInfo.InvariantCulture), r.ErrorCount.ToString(), "", "", "", "", "" }.Select(Q)));
+        static string Q(string s) => "\"" + s.Replace("\"", "\"\"") + "\"";
+        var b = new StringBuilder("Дата;Статус;Режим;Длительность;Проверено;Проходов;Ошибок\r\n");
+        b.AppendLine(string.Join(';', new[] { r.StartedText, r.StatusText, r.Mode, r.DurationText, r.MemoryText, r.Passes.ToString(), r.ErrorCount.ToString() }.Select(Q)));
+        b.AppendLine().AppendLine("Смещение;Ожидалось;Прочитано;Шаг;Проход");
         foreach (var e in r.Errors)
-            b.AppendLine(string.Join(';', new[] { "Ошибка", "", "", "", "", "", "", e.OffsetText, e.ExpectedText, e.ActualText, e.Stage, e.Pass.ToString() }.Select(Q)));
-        foreach (var item in new[] { ("Рекомендации", r.Recommendation), ("Конфигурация", r.Configuration), ("Методы", r.Algorithms) })
-            b.AppendLine(string.Join(';', new[] { item.Item1, "", item.Item2, "", "", "", "", "", "", "", "", "" }.Select(Q)));
+            b.AppendLine(string.Join(';', new[] { e.OffsetText, e.ExpectedText, e.ActualText, e.Stage, e.Pass.ToString() }.Select(Q)));
         return b.ToString();
     }
 }
