@@ -52,9 +52,6 @@
                 <TabItem>
                     <v:RezultatyView />
                 </TabItem>
-                <TabItem>
-                    <v:NastroikiView />
-                </TabItem>
             </TabControl>
         </DockPanel>
     </Grid>

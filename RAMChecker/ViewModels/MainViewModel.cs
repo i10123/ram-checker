@@ -6,13 +6,12 @@ using RAMChecker.Services;
 
 namespace RAMChecker.ViewModels;
 
-// Главная модель окна: навигация, история проверок и настройки. Страницы «Обзор» и «Тестирование» — отдельные модели.
+// Главная модель окна: навигация и история проверок. Страницы «Обзор» и «Тестирование» — отдельные модели.
 public class MainViewModel : NabludaemyObject
 {
     private readonly LocalStorage storage = new();
     // Мониторинг обновляется раз в секунду.
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
-    private AppSettings settings = new();
     private bool historyWritable = true;
     private int selectedPage;
     private string notice = "";
@@ -21,7 +20,7 @@ public class MainViewModel : NabludaemyObject
     public ObzorViewModel Obzor { get; }
     public TestirovanieViewModel Test { get; }
     public ObservableCollection<DiagnosticResult> History { get; } = [];
-    public string[] Navigation { get; } = ["Обзор", "Тестирование", "Результаты", "Настройки"];
+    public string[] Navigation { get; } = ["Обзор", "Тестирование", "Результаты"];
     public bool HasNotice => notice.Length > 0;
     public bool HasHistory => History.Count > 0;
     public bool HasNoHistory => History.Count == 0;
@@ -69,23 +68,10 @@ public class MainViewModel : NabludaemyObject
         }
     }
 
-    public bool AutoSave
-    {
-        get => settings.AutoSave;
-        set => ChangeSettings(() => settings.AutoSave = value);
-    }
-
-    public bool StopOnError
-    {
-        get => settings.StopOnFirstError;
-        set => ChangeSettings(() => settings.StopOnFirstError = value);
-    }
-
     public async Task InitializeAsync()
     {
         try
         {
-            settings = storage.Read<AppSettings>("settings.json") ?? new();
             foreach (var r in storage.ReadHistory().OrderByDescending(r => r.Started))
                 History.Add(r);
             SelectedResult = History.FirstOrDefault();
@@ -93,7 +79,7 @@ public class MainViewModel : NabludaemyObject
         catch (Exception ex)
         {
             historyWritable = false;
-            Notice = "Не удалось прочитать историю или настройки: " + ex.Message;
+            Notice = "Не удалось прочитать историю: " + ex.Message;
         }
         Obzor.Tick();
         timer.Start();
@@ -115,9 +101,10 @@ public class MainViewModel : NabludaemyObject
         SaveHistory();
     }
 
+    // История сохраняется всегда: после каждого изменения и раз в 10 секунд во время проверки.
     public void SaveHistory()
     {
-        if (!historyWritable || !settings.AutoSave)
+        if (!historyWritable)
             return;
         try
         {
@@ -131,16 +118,5 @@ public class MainViewModel : NabludaemyObject
         timer.Stop();
         await Test.StopAsync();
         Obzor.Dispose();
-    }
-
-    private void ChangeSettings(Action change)
-    {
-        change();
-        try
-        {
-            storage.Write("settings.json", settings);
-        }
-        catch (Exception ex) { Notice = "Не удалось сохранить настройки: " + ex.Message; }
-        Changed();
     }
 }

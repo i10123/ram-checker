@@ -53,10 +53,3 @@ public class DiagnosticResult
         _ => "Проверка не завершена, по ней нельзя судить об исправности памяти."
     };
 }
-
-// Настройки приложения, которые сохраняются между запусками.
-public class AppSettings
-{
-    public bool StopOnFirstError { get; set; }
-    public bool AutoSave { get; set; } = true;
-}
