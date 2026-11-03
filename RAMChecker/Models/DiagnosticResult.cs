@@ -61,7 +61,10 @@ public class DiagnosticResult
     // Объём, прошедший хотя бы один полный проход: после первого прохода — весь буфер, до него — только
     // зелёные блоки карты. При ранней остановке запрошенный объём проверен не весь.
     [JsonIgnore] public long CheckedBytes => RequestedBytes / Map.Length * (Passes > 0 ? Map.Length : Map.Count(s => s == MemoryDiagnosticService.Ok));
-    [JsonIgnore] public string CheckedText => MemorySnapshot.Format((ulong)CheckedBytes);
+    // Красный блок первого прохода мог пройти оба обхода, а мог быть остановлен на ошибке — карта этого не различает.
+    // Поэтому в таком случае объём указан как нижняя граница.
+    [JsonIgnore] public string CheckedText => (Passes == 0 && Map.Contains(MemoryDiagnosticService.Error) ? "не менее " : "")
+        + MemorySnapshot.Format((ulong)CheckedBytes);
     [JsonIgnore] public string Description => $"{Mode} · {DurationText} · {MemoryText}";
     [JsonIgnore] public bool HasErrors => ErrorCount > 0;
     // Уровень для цвета в списке: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки.
