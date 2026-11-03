@@ -5,10 +5,6 @@
         <TextBlock Text="Настройки" Style="{StaticResource Zagolovok}" />
         <Border Style="{StaticResource Kartochka}">
             <StackPanel>
-                <TextBlock Text="Тема оформления" Style="{StaticResource Podpis}" />
-                <ComboBox ItemsSource="{Binding Themes}" SelectedIndex="{Binding ThemeIndex}" Width="240" HorizontalAlignment="Left" Margin="0,4,0,16" />
-                <TextBlock Text="Интервал обновления мониторинга" Style="{StaticResource Podpis}" />
-                <ComboBox ItemsSource="{Binding RefreshOptions}" SelectedIndex="{Binding RefreshIndex}" Width="240" HorizontalAlignment="Left" Margin="0,4,0,16" />
                 <CheckBox Content="Останавливать проверку при первой ошибке" IsChecked="{Binding StopOnError}" />
                 <CheckBox Content="Автоматически сохранять историю проверок" IsChecked="{Binding AutoSave}" Margin="0,8,0,0" />
             </StackPanel>

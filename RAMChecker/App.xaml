@@ -2,8 +2,8 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml"
-             ThemeMode="Light">
-    <!-- Цвета берутся из встроенной темы Fluent, поэтому светлая и тёмная темы переключаются без своих словарей. -->
+             ThemeMode="Dark">
+    <!-- Цвета берутся из встроенной тёмной темы Fluent, поэтому собственные словари цветов не нужны. -->
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="Vidimost" />
 

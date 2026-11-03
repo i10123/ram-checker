@@ -57,8 +57,6 @@ public class DiagnosticResult
 // Настройки приложения, которые сохраняются между запусками.
 public class AppSettings
 {
-    public int RefreshSeconds { get; set; } = 1;
     public bool StopOnFirstError { get; set; }
     public bool AutoSave { get; set; } = true;
-    public bool DarkTheme { get; set; }
 }

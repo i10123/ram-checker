@@ -45,6 +45,7 @@
                         <Button Content="Сохранить HTML" Tag="html" Click="Export_Click" Style="{DynamicResource AccentButtonStyle}" />
                         <Button Content="Сохранить CSV" Tag="csv" Click="Export_Click" Margin="8,0" />
                         <Button Content="Печать / PDF" Tag="pdf" Click="Export_Click" />
+                        <Button Content="Удалить" Margin="8,0" Command="{Binding DataContext.DeleteResultCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                     </StackPanel>
                 </StackPanel>
                 <DataGrid ItemsSource="{Binding Errors}" AutoGenerateColumns="False" IsReadOnly="True" HeadersVisibility="Column"
