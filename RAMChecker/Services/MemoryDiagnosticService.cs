@@ -33,12 +33,14 @@ public static class MemoryDiagnosticService
     // Шахматный шаблон: 1010… и 0101… чередуются через ячейку и меняются местами каждые четыре прохода.
     // Бегущая единица: в слове один единичный бит, у соседней ячейки он сдвинут на разряд; инверсия даёт бегущий ноль.
     // Случайный шаблон: адрес перемешивается сдвигами xorshift, поэтому значение можно заново вычислить при проверке.
+    // В 32-битной ячейке помещается только 2^32 разных значений, поэтому адресный шаблон повторяется через 16 ГБ.
+    // В случайный шаблон подмешиваются старшие биты адреса: ячейки на расстоянии 16 ГБ в нём уже различаются.
     public static uint Pattern(long address, int pass) => ((pass - 1) % 4) switch
     {
         0 => Adres(address, pass),
         1 => ((address + pass / 4) & 1) == 0 ? 0xAAAAAAAAu : 0x55555555u,
         2 => 1u << (int)((address + pass) % 32),
-        _ => Xorshift(Adres(address, pass))
+        _ => Xorshift(Adres(address, pass) ^ unchecked((uint)(address >> 32) * 0x85EBCA6Bu))
     };
 
     private static uint Adres(long address, int pass) => unchecked((uint)address * 0x9E3779B1u + (uint)pass * 0x7F4A7C15u);
