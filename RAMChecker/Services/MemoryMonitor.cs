@@ -15,6 +15,9 @@ public record MemorySnapshot(ulong Total, ulong Available, ulong? Committed, ulo
 
 public static class MemoryMonitor
 {
+    // Агрессивная сборка мусора не только освобождает объекты, но и возвращает свободную память Windows.
+    public static void ReturnFreeMemory() => GC.Collect(2, GCCollectionMode.Aggressive, blocking: true, compacting: true);
+
     public static MemorySnapshot Read()
     {
         var m = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };

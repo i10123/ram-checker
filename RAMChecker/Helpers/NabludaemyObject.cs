@@ -7,10 +7,14 @@ namespace RAMChecker.Helpers
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        // Без имени свойства WPF перечитывает все привязки объекта — так проще, чем перечислять каждое.
-        protected void Changed(string? property = null)
+        // Без имён свойств WPF перечитывает все привязки объекта. Для частых обновлений
+        // (раз в секунду) перечисляем только изменившиеся свойства, чтобы не перерисовывать весь экран.
+        protected void Changed(params string[] properties)
         {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
+            if (properties.Length == 0)
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
+            foreach (var property in properties)
+                PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
             Komanda.Refresh();
         }
     }

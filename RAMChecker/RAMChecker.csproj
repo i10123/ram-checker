@@ -12,7 +12,13 @@
         <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <!-- Тема Fluent встроена в WPF, но помечена как предварительная. -->
         <NoWarn>$(NoWarn);WPF0001</NoWarn>
+        <!-- Экономия памяти: сборка мусора без фонового потока и с более частым сжатием кучи. -->
+        <ConcurrentGarbageCollection>false</ConcurrentGarbageCollection>
+        <TieredPGO>false</TieredPGO>
     </PropertyGroup>
+    <ItemGroup>
+        <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
+    </ItemGroup>
     <ItemGroup>
         <PackageReference Include="System.Management" Version="10.0.12" />
         <!-- Подписанные модули драйвера PawnIO для шины SMBus (AMD и Intel). -->

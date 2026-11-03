@@ -22,8 +22,9 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
 
     public ObservableCollection<ModuleMemoryModel> ModulesMemory { get; } = [];
     public MemorySnapshot? Memory { get; private set; }
-    public PointCollection UsagePoints { get; private set; } = [];
-    public PointCollection UsageArea { get; private set; } = [];
+    // Точки графика меняются на месте: новые коллекции каждую секунду лишь нагружали бы сборщик мусора.
+    public PointCollection UsagePoints { get; } = [];
+    public PointCollection UsageArea { get; } = [];
     public List<Stolbec> BenchmarkBars { get; private set; } = [];
     public string BenchmarkText { get; private set; } = "Замер ещё не выполнялся";
     public bool BenchmarkRunning { get; private set; }
@@ -111,9 +112,15 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
             if (samples.Count > 60)
                 samples.Dequeue();
             // График последних 60 измерений в области 600 × 160; заливка замыкается по нижнему краю.
-            var line = samples.Select((load, i) => new Point((60 - samples.Count + i) * 600 / 59d, 160 - load * 1.6)).ToList();
-            UsagePoints = new PointCollection(line);
-            UsageArea = new PointCollection(line.Append(new(600, 160)).Append(new(line[0].X, 160)));
+            UsagePoints.Clear();
+            int i = 60 - samples.Count;
+            foreach (double load in samples)
+                UsagePoints.Add(new Point(i++ * 600 / 59d, 160 - load * 1.6));
+            UsageArea.Clear();
+            foreach (var point in UsagePoints)
+                UsageArea.Add(point);
+            UsageArea.Add(new Point(600, 160));
+            UsageArea.Add(new Point(UsagePoints[0].X, 160));
         }
         catch (Exception ex) { glavnaya.Notice = "Мониторинг недоступен: " + ex.Message; }
         if (spd is not null && temperatureTask is not { IsCompleted: false })
@@ -122,7 +129,9 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
                 foreach (var m in ModulesMemory.Where(m => m.SpdAddress != 0))
                     m.RAM_temperature = spd.Temperature(m.SpdAddress) is double t ? $"{t:0.0} °C" : ModuleMemoryModel.NetDannyh;
             });
-        Changed();
+        Changed(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText));
+        if (spd is not null)
+            Changed(nameof(ModuleRows));
     }
 
     private async Task BenchmarkAsync()
@@ -139,7 +148,7 @@ public class ObzorViewModel : NabludaemyObject, IDisposable
             BenchmarkText = $"Задержка: {r.LatencyNs:0.0} нс";
         }
         catch (Exception ex) { BenchmarkText = "Замер не выполнен: " + ex.Message; }
-        GC.Collect(); // Буферы замера больше не нужны — возвращаем память системе.
+        MemoryMonitor.ReturnFreeMemory(); // Буферы замера больше не нужны.
         BenchmarkRunning = false;
         Changed();
     }
