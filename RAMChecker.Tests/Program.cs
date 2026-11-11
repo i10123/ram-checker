@@ -150,6 +150,11 @@ early.PropertyChanged += (_, _) => notices++;
 early.ApplyProgress(new("", 1, 1, 0, TimeSpan.FromHours(25), 1, 0, null, null));
 Check(notices == 1 && early.DurationText == "25:00:00", $"идущая проверка сообщает экрану об изменениях, длительность больше суток: {early.DurationText}");
 
+// --- Замер скорости ---
+// Внутри замера сверяются сумма прочитанных слов и копия буфера, при расхождении он выбрасывает исключение.
+var bench = await MemoryBenchmark.RunAsync();
+Check(bench is { ReadMBs: > 0, WriteMBs: > 0, CopyMBs: > 0, LatencyNs: > 0 }, $"замер скорости выполняется и проходит сверку данных: {bench}");
+
 // --- SPD ---
 Check(SpdReader.Crc16(Encoding.ASCII.GetBytes("123456789"), 9) == 0x31C3, "CRC16 совпадает с эталоном CRC-16/XMODEM");
 var spd = new byte[128];

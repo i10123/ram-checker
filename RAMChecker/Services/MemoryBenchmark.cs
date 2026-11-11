@@ -49,7 +49,8 @@ public static class MemoryBenchmark
             sum = Vector.Sum(total);
         });
         double copy = Measure(() => Array.Copy(source, destination, Words));
-        if (sum != unchecked(0xA5A5A5A5u * Words) || !source.AsSpan().SequenceEqual(destination))
+        // Сумма считается по модулю 2^32, поэтому и ожидаемое значение умножается в uint.
+        if (sum != unchecked(0xA5A5A5A5u * (uint)Words) || !source.AsSpan().SequenceEqual(destination))
             throw new InvalidOperationException("Данные после замера не совпали.");
 
         // Задержка: переходы по случайному циклу, где следующий адрес известен только после чтения текущего.
