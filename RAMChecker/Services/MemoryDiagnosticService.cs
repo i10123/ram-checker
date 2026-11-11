@@ -184,10 +184,12 @@ public static class MemoryDiagnosticService
                             if (imitation && b == MapSize / 3)
                                 Block(b)[7] ^= 1u << 5;
                         }
-                        // Клетка карты зеленеет, когда её блок прошёл текущий проход без ошибок.
-                        else if (CheckBlock(Block(b), start, pass, step == 2, (a, e, r) => OnError(b, a, e, r), stop.Token) == 0
-                            && step == 2 && result.Map[b] != Error)
-                            result.Map[b] = Ok;
+                        // Клетка карты зеленеет, когда её блок прошёл текущий проход без ошибок. Карта меняется только
+                        // под блокировкой, как и в OnError, поэтому снимок в Report всегда согласован со счётчиком.
+                        else if (CheckBlock(Block(b), start, pass, step == 2, (a, e, r) => OnError(b, a, e, r), stop.Token) == 0 && step == 2)
+                            lock (errorsLock)
+                                if (result.Map[b] != Error)
+                                    result.Map[b] = Ok;
                         Interlocked.Increment(ref done);
                         Interlocked.Increment(ref blockSteps);
                         Report();
