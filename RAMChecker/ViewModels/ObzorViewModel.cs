@@ -90,12 +90,27 @@ public class ObzorViewModel : NabludaemyObject
         Changed(nameof(Loading), nameof(ModulesText));
     }
 
+    // Пары «модуль из WMI — паспорт SPD». Надёжный признак планки — серийный номер и модель из второй страницы SPD:
+    // пара принимается, если они совпали ровно у одного модуля и одного паспорта. Распаянная на плате память
+    // микросхемы SPD не имеет, такой модуль остаётся без пары. Если по номеру не нашлось ни одной пары (номер не
+    // прочитан или BIOS записал его в WMI иначе), паспорта сопоставляются по порядку (адреса SPD 0x50, 0x51… и список
+    // WMI обычно идут от первого слота), но только если число модулей и объём каждого совпадают. Если объёмы всех
+    // планок разные, совпадение объёма подтверждает пару; если есть одинаковые, их можно перепутать.
+    public static List<(ModuleMemoryModel Module, SpdInfo Info)> Match(List<ModuleMemoryModel> modules, List<SpdInfo> infos, out string how)
+    {
+        bool Same(ModuleMemoryModel m, SpdInfo i) => i.Serial == m.RAM_serialNumber && i.Part == m.RAM_partNumber;
+        List<(ModuleMemoryModel, SpdInfo)> pairs = [.. from m in modules from i in infos
+            where Same(m, i) && infos.Count(j => Same(m, j)) == 1 && modules.Count(n => Same(n, i)) == 1 select (m, i)];
+        how = "совпали серийный номер и модель";
+        if (pairs.Count == 0 && infos.Count == modules.Count && modules.Zip(infos).All(p => p.First.size_GB == p.Second.SizeGB))
+        {
+            pairs = [.. modules.Zip(infos)];
+            how = modules.Select(m => m.size_GB).Distinct().Count() < modules.Count ? "отнесён по порядку слотов, предположительно" : "по порядку слотов";
+        }
+        return pairs;
+    }
+
     // Возвращает драйвер для чтения температуры или null, если шина SMBus недоступна.
-    // У WMI и SPD нет общего признака планки: модель и серийный номер лежат во второй странице SPD, которую
-    // программа не читает. Поэтому паспорт сопоставляется по порядку (адреса SPD 0x50, 0x51… и список WMI
-    // обычно идут от первого слота), но только если число модулей и объём каждого совпадают — иначе данные
-    // одной планки легко приписать другой, и тайминги не показываются. Если объёмы всех планок разные, совпадение
-    // объёма подтверждает пару; если есть одинаковые, их можно перепутать — это отмечено в строке «Паспорт SPD».
     private SpdReader? ReadSpd(List<ModuleMemoryModel> modules)
     {
         SpdReader? reader = null;
@@ -103,18 +118,18 @@ public class ObzorViewModel : NabludaemyObject
         {
             reader = new SpdReader();
             var infos = reader.ReadAll();
-            bool matched = infos.Count == modules.Count && modules.Zip(infos).All(p => p.First.size_GB == p.Second.SizeGB);
+            var pairs = Match(modules, infos, out string how);
             SpdStatus = infos.Count == 0 ? "Микросхемы SPD не найдены на шине SMBus."
-                : !matched ? $"Паспорт SPD прочитан у {infos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
+                : pairs.Count == 0 ? $"Паспорт SPD прочитан у {infos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
+                : pairs.Count < modules.Count ? $"Паспорт SPD найден у {pairs.Count} из {modules.Count} модулей."
                 : "";
-            bool assumed = modules.Select(m => m.size_GB).Distinct().Count() < modules.Count;
             // Без сопоставления драйвер не нужен: адреса датчиков температуры модулям не присвоены.
-            if (matched)
+            if (pairs.Count > 0)
             {
-                foreach (var (m, info) in modules.Zip(infos))
+                foreach (var (m, info) in pairs)
                 {
                     m.SpdAddress = info.Address;
-                    m.RAM_spd = $"адрес 0x{info.Address:X2}" + (assumed ? " · отнесён по порядку слотов, предположительно" : "");
+                    m.RAM_spd = $"адрес 0x{info.Address:X2} · {how}";
                     m.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
                     m.RAM_timings = $"{info.CL}-{info.RCD}-{info.RP}-{info.RAS}";
                     m.RAM_tRC = info.RC.ToString();

@@ -1,13 +1,19 @@
 using System.Buffers.Binary;
+using System.Text;
 
 namespace RAMChecker.Services;
 
-public record SpdInfo(byte Address, int NominalSpeed, int CL, int RCD, int RP, int RAS, int RC, int SizeGB, bool HasSensor);
+public record SpdInfo(byte Address, int NominalSpeed, int CL, int RCD, int RP, int RAS, int RC, int SizeGB, bool HasSensor)
+{
+    // Серийный номер и модель планки — по ним паспорт сопоставляется с модулем из WMI.
+    public string Serial { get; init; } = "";
+    public string Part { get; init; } = "";
+}
 
-// Читает паспорт планок DDR4 из микросхемы SPD по шине SMBus (стандарт JEDEC, первые 128 байт).
+// Читает паспорт планок DDR4 из микросхемы SPD по шине SMBus (стандарт JEDEC): первые 128 байт и модель с серийным номером.
 public sealed class SpdReader : IDisposable
 {
-    private const long Read = 1, ByteData = 2, WordData = 3;
+    private const long Write = 0, Read = 1, Byte = 1, ByteData = 2, WordData = 3;
     private readonly PawnIO smbus;
     // Общее имя блокировки шины, которое используют и другие программы мониторинга.
     private readonly Mutex busLock;
@@ -41,16 +47,39 @@ public sealed class SpdReader : IDisposable
         var result = new List<SpdInfo>();
         // Микросхемы SPD восьми слотов отвечают по адресам 0x50–0x57.
         for (byte address = 0x50; address <= 0x57; address++)
-        {
-            var bytes = new byte[128];
-            int i = 0;
-            for (int value; i < bytes.Length && (value = Transfer(address, i, ByteData)) >= 0; i++)
-                bytes[i] = (byte)value;
-            if (i == bytes.Length && Decode(address, bytes) is { } info)
+            if (ReadBytes(address, 0, 128) is { } bytes && Decode(address, bytes) is { } info)
                 result.Add(info);
+        // Память SPD DDR4 разбита на две страницы по 256 байт; серийный номер (байты 325–328) и модель (329–348)
+        // лежат во второй. Команда по адресу 0x37 переключает на вторую страницу сразу все микросхемы на шине,
+        // по адресу 0x36 — обратно на первую. Команды посылаются только после того, как первая страница подтвердила
+        // DDR4: у микросхем SPD DDR3 эти адреса включают защиту от записи. Некоторые микросхемы не подтверждают
+        // переключение, поэтому результат команды не проверяется — чужие данные просто не совпадут с WMI.
+        if (result.Count > 0)
+        {
+            SetPage(1);
+            for (int k = 0; k < result.Count; k++)
+                if (ReadBytes(result[k].Address, 325 - 256, 24) is { } id)
+                    result[k] = result[k] with { Serial = Convert.ToHexString(id, 0, 4), Part = Encoding.ASCII.GetString(id, 4, 20).Trim(' ', '\0') };
+            SetPage(0); // Другие программы и BIOS ждут, что выбрана первая страница.
         }
         return result;
     }) ?? [];
+
+    private byte[]? ReadBytes(byte address, int start, int count)
+    {
+        var bytes = new byte[count];
+        for (int i = 0; i < count; i++)
+        {
+            int value = Transfer(address, start + i, ByteData);
+            if (value < 0)
+                return null;
+            bytes[i] = (byte)value;
+        }
+        return bytes;
+    }
+
+    // Команда без данных: сам адрес 0x36 или 0x37 выбирает страницу, передаваемый байт микросхема не читает.
+    private void SetPage(int page) => smbus.Execute("ioctl_smbus_xfer", [0x36 + page, Write, 0, Byte, 0], new long[1]);
 
     // Датчик температуры модуля (TSOD) находится по адресу 0x18 + номер слота, регистр 5.
     public double? Temperature(byte spdAddress) => Locked<double?>(() =>

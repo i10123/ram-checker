@@ -2,6 +2,7 @@ using System.IO;
 using System.Text;
 using RAMChecker.Models;
 using RAMChecker.Services;
+using RAMChecker.ViewModels;
 using static RAMChecker.Services.MemoryDiagnosticService;
 
 // Ручная проверка на реальном оборудовании: нужны драйвер PawnIO и права администратора.
@@ -185,6 +186,17 @@ Check(SpdReader.Decode(0x50, Spd(b => b[20] = b[21] = b[22] = 0)) is null, "пу
 // Поддерживается только CL7, а tAA = 30 нс требует CL40 — за пределами списка.
 Check(SpdReader.Decode(0x50, Spd(b => (b[20], b[21], b[22], b[24], b[123]) = (1, 0, 0, 240, 0))) is null, "расчётный CL выше списка поддерживаемых отклоняется");
 Check(SpdReader.Decode(0x50, spd[..100]) is null, "слишком короткий паспорт отклоняется");
+
+// Сопоставление с WMI, как на ноутбуке с распаянной памятью: у первого модуля микросхемы SPD нет,
+// паспорт по адресу 0x50 принадлежит второму модулю — порядок адресов и слотов не совпадает.
+ModuleMemoryModel Module(string serial, string part) => new() { size_GB = 8, RAM_serialNumber = serial, RAM_partNumber = part };
+var soldered = Module("00000000", "M471A1G44BB0-CWE");
+var socket = Module("32FD2187", "M471A1K43EB1-CWE");
+var found0x50 = info! with { Serial = "32FD2187", Part = "M471A1K43EB1-CWE" };
+var pairs = ObzorViewModel.Match([soldered, socket], [found0x50], out string how);
+Check(pairs is [(var pm, var pi)] && pm == socket && pi == found0x50 && how.Contains("серийный"), "паспорт отнесён к модулю с тем же серийным номером и моделью, а не к первому слоту");
+pairs = ObzorViewModel.Match([Module("0", "A"), Module("0", "A")], [found0x50 with { Serial = "0", Part = "A" }, found0x50 with { Serial = "0", Part = "A" }], out how);
+Check(pairs.Count == 2 && how.Contains("предположительно"), "одинаковые серийные номера не дают пары по номеру, остаётся предположительный порядок слотов");
 
 // --- Отчёт ---
 var report = new DiagnosticResult { ErrorCount = 1, Errors = [new(64, 1, 3, "Проверка вперёд", 1)], Status = DiagnosticStatus.Errors };
