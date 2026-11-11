@@ -193,9 +193,9 @@ ModuleMemoryModel Module(string serial, string part) => new() { size_GB = 8, RAM
 var soldered = Module("00000000", "M471A1G44BB0-CWE");
 var socket = Module("32FD2187", "M471A1K43EB1-CWE");
 var found0x50 = info! with { Serial = "32FD2187", Part = "M471A1K43EB1-CWE" };
-var pairs = ObzorViewModel.Match([soldered, socket], [found0x50], out string how);
+var pairs = OverviewViewModel.Match([soldered, socket], [found0x50], out string how);
 Check(pairs is [(var pm, var pi)] && pm == socket && pi == found0x50 && how.Contains("серийный"), "паспорт отнесён к модулю с тем же серийным номером и моделью, а не к первому слоту");
-pairs = ObzorViewModel.Match([Module("0", "A"), Module("0", "A")], [found0x50 with { Serial = "0", Part = "A" }, found0x50 with { Serial = "0", Part = "A" }], out how);
+pairs = OverviewViewModel.Match([Module("0", "A"), Module("0", "A")], [found0x50 with { Serial = "0", Part = "A" }, found0x50 with { Serial = "0", Part = "A" }], out how);
 Check(pairs.Count == 2 && how.Contains("предположительно"), "одинаковые серийные номера не дают пары по номеру, остаётся предположительный порядок слотов");
 
 // --- Отчёт ---

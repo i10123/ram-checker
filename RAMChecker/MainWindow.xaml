@@ -27,7 +27,7 @@
                 <Image Source="{StaticResource Logo}" Width="40" Height="40" Margin="0,0,12,0" />
                 <StackPanel VerticalAlignment="Center">
                     <TextBlock Text="MemScope" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="Диагностика памяти" Style="{StaticResource Podpis}" />
+                    <TextBlock Text="Диагностика памяти" Style="{StaticResource Caption}" />
                 </StackPanel>
             </DockPanel>
             <ListBox ItemsSource="{Binding Navigation}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" />
@@ -36,7 +36,7 @@
         <DockPanel Grid.Column="1">
             <Border DockPanel.Dock="Top" Margin="16,16,32,0" Padding="12" CornerRadius="8"
                     Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
-                    Visibility="{Binding HasNotice, Converter={StaticResource Vidimost}}">
+                    Visibility="{Binding HasNotice, Converter={StaticResource BoolToVisibility}}">
                 <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
             </Border>
             <!-- Вкладки без заголовков: раздел выбирается в боковом меню. -->
@@ -48,13 +48,13 @@
                     </Style>
                 </TabControl.ItemContainerStyle>
                 <TabItem>
-                    <v:ObzorView DataContext="{Binding Obzor}" />
+                    <v:OverviewView DataContext="{Binding Overview}" />
                 </TabItem>
                 <TabItem>
-                    <v:TestirovanieView DataContext="{Binding Test}" />
+                    <v:TestingView DataContext="{Binding Test}" />
                 </TabItem>
                 <TabItem>
-                    <v:RezultatyView />
+                    <v:ResultsView />
                 </TabItem>
             </TabControl>
         </DockPanel>

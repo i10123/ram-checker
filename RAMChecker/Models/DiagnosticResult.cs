@@ -26,7 +26,7 @@ public record MemoryError(long Offset, uint Expected, uint Actual, string Stage,
 }
 
 // Клетка карты памяти: состояние блока буфера и подсказка с его диапазоном адресов.
-public record Kletka(int Index, byte State, long BlockBytes)
+public record MemoryCell(int Index, byte State, long BlockBytes)
 {
     public string Tip => $"Блок {Index + 1} · 0x{Index * BlockBytes:X9}–0x{(Index + 1) * BlockBytes - 1:X9} · " + State switch
     {
@@ -36,7 +36,7 @@ public record Kletka(int Index, byte State, long BlockBytes)
         _ => "без ошибок"
     };
 
-    public static Kletka[] Iz(byte[] map, long bytes) => [.. map.Select((state, i) => new Kletka(i, state, bytes / map.Length))];
+    public static MemoryCell[] From(byte[] map, long bytes) => [.. map.Select((state, i) => new MemoryCell(i, state, bytes / map.Length))];
 }
 
 // Итог одной проверки памяти; сохраняется в историю и выгружается в отчёт.
@@ -72,8 +72,8 @@ public class DiagnosticResult : INotifyPropertyChanged
     [JsonIgnore] public string Description => $"{Mode} · {DurationText} · {MemoryText}";
     [JsonIgnore] public bool HasErrors => ErrorCount > 0;
     // Уровень для цвета в списке: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки.
-    [JsonIgnore] public int Uroven => ErrorCount > 0 ? 2 : Status == DiagnosticStatus.Completed ? 1 : 0;
-    [JsonIgnore] public Kletka[] Kletki => Kletka.Iz(Map, RequestedBytes);
+    [JsonIgnore] public int Level => ErrorCount > 0 ? 2 : Status == DiagnosticStatus.Completed ? 1 : 0;
+    [JsonIgnore] public MemoryCell[] Cells => MemoryCell.From(Map, RequestedBytes);
 
     // Переносит в идущую проверку данные отчёта о ходе. Автосохранение раз в 10 секунд должно хранить
     // согласованные счётчик, карту и список ошибок (не больше первых 1000, как в итоге), чтобы после

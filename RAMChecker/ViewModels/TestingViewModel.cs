@@ -9,10 +9,10 @@ using RAMChecker.Services;
 namespace RAMChecker.ViewModels;
 
 // Страница «Тестирование»: выбор режима и объёма, ход проверки и карта памяти.
-public class TestirovanieViewModel : NabludaemyObject
+public class TestingViewModel : ObservableObject
 {
     private static readonly TimeSpan?[] Durations = [TimeSpan.FromMinutes(10), TimeSpan.FromHours(2), null, null];
-    private readonly MainViewModel glavnaya;
+    private readonly MainViewModel main;
     private CancellationTokenSource? cancellation;
     private Task? running;
     private DiagnosticResult? active;
@@ -25,18 +25,18 @@ public class TestirovanieViewModel : NabludaemyObject
     public string Stage { get; private set; } = "Готово к запуску";
     public double Percent { get; private set; }
     public string PassText { get; private set; } = "—";
-    public Kletka[] Kletki { get; private set; } = Kletka.Iz(new byte[MemoryDiagnosticService.MapSize], 0);
+    public MemoryCell[] Cells { get; private set; } = MemoryCell.From(new byte[MemoryDiagnosticService.MapSize], 0);
     public string SpeedText { get; private set; } = "—";
     // Итог последней проверки для плашки на странице; при новом запуске плашка скрывается.
-    public DiagnosticResult? Itog { get; private set; }
+    public DiagnosticResult? LastResult { get; private set; }
     // Плашка нужна только для настоящего итога: остановку пользователь выбрал сам, о ней сообщает заголовок.
     // Найденные до остановки ошибки показываются всегда.
-    public bool HasItog => Itog is { HasErrors: true } or { Status: not DiagnosticStatus.Stopped };
-    private bool itogNaZnachke;
+    public bool HasLastResult => LastResult is { HasErrors: true } or { Status: not DiagnosticStatus.Stopped };
+    private bool resultOnTaskbar;
 
     // Значок в панели задач: полоса растёт по ходу проверки и краснеет при ошибках.
     // Итог остаётся на значке, пока пользователь не вернётся в окно.
-    public TaskbarItemProgressState TaskbarState => (active ?? (itogNaZnachke ? Itog : null)) switch
+    public TaskbarItemProgressState TaskbarState => (active ?? (resultOnTaskbar ? LastResult : null)) switch
     {
         null => TaskbarItemProgressState.None,
         { ErrorCount: > 0 } => TaskbarItemProgressState.Error,
@@ -44,24 +44,24 @@ public class TestirovanieViewModel : NabludaemyObject
         _ => TaskbarItemProgressState.Paused
     };
     public double TaskbarValue => IsRunning ? Percent / 100 : 1;
-    public ObzorViewModel Obzor => glavnaya.Obzor;
+    public OverviewViewModel Overview => main.Overview;
     public bool IsRunning => cancellation is not null;
     public bool IsIdle => !IsRunning;
     // После завершения цифры берутся из итога, чтобы они совпадали с плашкой.
-    public string ElapsedText => (active ?? Itog)?.DurationText ?? "00:00:00";
-    public string ErrorCountText => ((active ?? Itog)?.ErrorCount ?? 0).ToString();
+    public string ElapsedText => (active ?? LastResult)?.DurationText ?? "00:00:00";
+    public string ErrorCountText => ((active ?? LastResult)?.ErrorCount ?? 0).ToString();
     // Для циклического и стресс-режима длительность не задана — оставшееся время неизвестно.
     public string RemainingText => active is not null && Durations[ModeIndex] is { } d
         ? TimeSpan.FromSeconds(Math.Max(0, d.TotalSeconds - active.ElapsedSeconds)).ToString(@"hh\:mm\:ss") : "—";
     public string TestMemoryText => $"{MemoryMiB:0} МБ";
-    public Komanda StartCommand { get; }
-    public Komanda StopCommand { get; }
+    public RelayCommand StartCommand { get; }
+    public RelayCommand StopCommand { get; }
 
     // Резерв для Windows: проверять можно только часть свободной памяти. Безопасный объём может быть и меньше
     // минимальных 64 МБ — тогда запуск запрещён, а ползунку всё равно нужен максимум не меньше минимума.
     private static double SafeMiB(MemorySnapshot? m) => m is null ? 0 : MemorySnapshot.SafeTestBytes(m) >> 20;
-    public double MaxMemoryMiB => Math.Max(64, SafeMiB(glavnaya.Obzor.Memory));
-    public bool MemoryShort => IsIdle && MemoryMiB > SafeMiB(glavnaya.Obzor.Memory);
+    public double MaxMemoryMiB => Math.Max(64, SafeMiB(main.Overview.Memory));
+    public bool MemoryShort => IsIdle && MemoryMiB > SafeMiB(main.Overview.Memory);
 
     // Объём кратен 16 МБ, чтобы буфер делился на 256 равных блоков карты.
     public double MemoryMiB
@@ -74,11 +74,11 @@ public class TestirovanieViewModel : NabludaemyObject
         }
     } = 512;
 
-    public TestirovanieViewModel(MainViewModel glavnaya)
+    public TestingViewModel(MainViewModel main)
     {
-        this.glavnaya = glavnaya;
+        this.main = main;
         // Задача запуска запоминается, чтобы при закрытии окна дождаться сохранения результата.
-        StartCommand = new(() => running = StartAsync(), () => !IsRunning && !glavnaya.Obzor.BenchmarkRunning && !MemoryShort);
+        StartCommand = new(() => running = StartAsync(), () => !IsRunning && !main.Overview.BenchmarkRunning && !MemoryShort);
         StopCommand = new(() => cancellation?.Cancel(), () => IsRunning);
     }
 
@@ -88,7 +88,7 @@ public class TestirovanieViewModel : NabludaemyObject
         if (active is not null && active.ElapsedSeconds - lastSaved >= 10)
         {
             lastSaved = (long)active.ElapsedSeconds;
-            glavnaya.SaveHistory();
+            main.SaveHistory();
         }
         Changed(nameof(MaxMemoryMiB), nameof(MemoryShort)); // Свободная память меняется, вместе с ней — допустимый объём проверки.
     }
@@ -122,13 +122,13 @@ public class TestirovanieViewModel : NabludaemyObject
         {
             Mode = Modes[ModeIndex].Split(' ')[0],
             RequestedBytes = (long)MemoryMiB << 20,
-            Configuration = string.Join("\n", glavnaya.Obzor.ModulesMemory.Select(m =>
+            Configuration = string.Join("\n", main.Overview.ModulesMemory.Select(m =>
                 $"{m.RAM_slot}: {m.RAM_maker} {m.RAM_partNumber}, {m.size_GB} ГБ, {m.RAM_speed}, тайминги {m.RAM_timings}, паспорт SPD: {m.RAM_spd}"))
         };
-        (lastSaved, Itog) = (0, null);
+        (lastSaved, LastResult) = (0, null);
         Events.Clear();
         Log($"Запуск: {session.Mode}, {TestMemoryText}");
-        glavnaya.AddResult(session);
+        main.AddResult(session);
 
         // Сервис сообщает прогресс из фонового потока, Progress переносит его в поток интерфейса.
         var last = (Seconds: 0d, Bytes: 0L);
@@ -141,15 +141,15 @@ public class TestirovanieViewModel : NabludaemyObject
                 last = (p.Elapsed.TotalSeconds, p.ProcessedBytes);
             }
             if (p.Map is not null)
-                Kletki = Kletka.Iz(p.Map, session.RequestedBytes);
+                Cells = MemoryCell.From(p.Map, session.RequestedBytes);
             if (p.Passes > session.Passes)
                 Log($"Проход {p.Passes} завершён, ошибок: {p.ErrorCount}");
             (Stage, Percent, PassText) = (p.Stage, p.Percent, p.Pass.ToString());
             session.ApplyProgress(p);
             Changed();
         });
-        // Запуск с ключом --imitaciya добавляет искусственную ошибку, чтобы показать, как выглядит неисправная память.
-        bool imitation = Environment.GetCommandLineArgs().Contains("--imitaciya");
+        // Запуск с ключом --imitation добавляет искусственную ошибку, чтобы показать, как выглядит неисправная память.
+        bool imitation = Environment.GetCommandLineArgs().Contains("--imitation");
         if (imitation)
             Log("Имитация ошибки памяти включена");
         (active, cancellation) = (session, new());
@@ -175,21 +175,21 @@ public class TestirovanieViewModel : NabludaemyObject
             cancellation.Dispose();
             (active, cancellation) = (null, null);
         }
-        glavnaya.History[glavnaya.History.IndexOf(session)] = result;
-        glavnaya.SelectedResult = result;
-        glavnaya.SaveHistory();
+        main.History[main.History.IndexOf(session)] = result;
+        main.SelectedResult = result;
+        main.SaveHistory();
         Log(result.StatusText);
-        (Stage, Kletki, Percent, SpeedText, Itog) = (result.StatusText, result.Kletki, result.Status == DiagnosticStatus.Completed ? 100 : Percent, "—", result);
+        (Stage, Cells, Percent, SpeedText, LastResult) = (result.StatusText, result.Cells, result.Status == DiagnosticStatus.Completed ? 100 : Percent, "—", result);
         MemoryMonitor.ReturnFreeMemory(); // Убираем накопившиеся за проверку снимки прогресса.
         // Если окно свёрнуто или в фоне, о завершении сообщают итог на значке и системный звук.
-        itogNaZnachke = !Application.Current.MainWindow.IsActive;
+        resultOnTaskbar = !Application.Current.MainWindow.IsActive;
         (result.HasErrors ? SystemSounds.Hand : SystemSounds.Asterisk).Play();
         Changed();
     }
 
     public void WindowActivated()
     {
-        itogNaZnachke = false;
+        resultOnTaskbar = false;
         Changed(nameof(TaskbarState));
     }
 

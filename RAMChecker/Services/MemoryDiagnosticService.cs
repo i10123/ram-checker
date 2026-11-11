@@ -37,13 +37,13 @@ public static class MemoryDiagnosticService
     // В случайный шаблон подмешиваются старшие биты адреса: ячейки на расстоянии 16 ГБ в нём уже различаются.
     public static uint Pattern(long address, int pass) => ((pass - 1) % 4) switch
     {
-        0 => Adres(address, pass),
+        0 => AddressPattern(address, pass),
         1 => ((address + pass / 4) & 1) == 0 ? 0xAAAAAAAAu : 0x55555555u,
         2 => 1u << (int)((address + pass) % 32),
-        _ => Xorshift(Adres(address, pass) ^ unchecked((uint)(address >> 32) * 0x85EBCA6Bu))
+        _ => Xorshift(AddressPattern(address, pass) ^ unchecked((uint)(address >> 32) * 0x85EBCA6Bu))
     };
 
-    private static uint Adres(long address, int pass) => unchecked((uint)address * 0x9E3779B1u + (uint)pass * 0x7F4A7C15u);
+    private static uint AddressPattern(long address, int pass) => unchecked((uint)address * 0x9E3779B1u + (uint)pass * 0x7F4A7C15u);
 
     private static uint Xorshift(uint x)
     {

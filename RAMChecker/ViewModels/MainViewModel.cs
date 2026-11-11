@@ -7,7 +7,7 @@ using RAMChecker.Services;
 namespace RAMChecker.ViewModels;
 
 // Главная модель окна: навигация и история проверок. Страницы «Обзор» и «Тестирование» — отдельные модели.
-public class MainViewModel : NabludaemyObject
+public class MainViewModel : ObservableObject
 {
     private readonly LocalStorage storage = new();
     // Мониторинг обновляется раз в секунду.
@@ -15,23 +15,23 @@ public class MainViewModel : NabludaemyObject
     private bool historyWritable = true;
     private Task loading = Task.CompletedTask;
 
-    public ObzorViewModel Obzor { get; }
-    public TestirovanieViewModel Test { get; }
+    public OverviewViewModel Overview { get; }
+    public TestingViewModel Test { get; }
     public ObservableCollection<DiagnosticResult> History { get; } = [];
     public string[] Navigation { get; } = ["Обзор", "Тестирование", "Результаты"];
     public bool HasNotice => Notice.Length > 0;
     public bool HasHistory => History.Count > 0;
     public bool HasNoHistory => History.Count == 0;
-    public Komanda DeleteResultCommand { get; }
+    public RelayCommand DeleteResultCommand { get; }
 
     public MainViewModel()
     {
-        Obzor = new(this);
+        Overview = new(this);
         Test = new(this);
         DeleteResultCommand = new(DeleteResult, () => SelectedResult is { Status: not DiagnosticStatus.Running });
         timer.Tick += (_, _) =>
         {
-            Obzor.Tick();
+            Overview.Tick();
             Test.Tick();
         };
     }
@@ -82,9 +82,9 @@ public class MainViewModel : NabludaemyObject
             historyWritable = false;
             Notice = "Не удалось прочитать историю: " + ex.Message;
         }
-        Obzor.Tick();
+        Overview.Tick();
         timer.Start();
-        loading = Obzor.LoadModulesAsync();
+        loading = Overview.LoadModulesAsync();
         await loading;
     }
 
@@ -122,6 +122,6 @@ public class MainViewModel : NabludaemyObject
         timer.Stop();
         await Test.StopAsync();
         await loading;
-        await Obzor.ShutdownAsync();
+        await Overview.ShutdownAsync();
     }
 }

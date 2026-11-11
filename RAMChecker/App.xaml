@@ -5,9 +5,9 @@
              ThemeMode="Dark">
     <!-- Цвета берутся из встроенной тёмной темы Fluent, поэтому собственные словари цветов не нужны. -->
     <Application.Resources>
-        <BooleanToVisibilityConverter x:Key="Vidimost" />
+        <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
-        <Style x:Key="Kartochka" TargetType="Border">
+        <Style x:Key="Card" TargetType="Border">
             <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
             <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -16,41 +16,41 @@
             <Setter Property="Margin" Value="0,0,16,16" />
         </Style>
 
-        <Style x:Key="Zagolovok" TargetType="TextBlock">
+        <Style x:Key="PageTitle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="28" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,0,0,20" />
         </Style>
 
-        <Style x:Key="Podzagolovok" TargetType="TextBlock">
+        <Style x:Key="SectionTitle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="16" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,0,0,12" />
         </Style>
 
-        <Style x:Key="Podpis" TargetType="TextBlock">
+        <Style x:Key="Caption" TargetType="TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
             <Setter Property="TextWrapping" Value="Wrap" />
         </Style>
 
-        <Style x:Key="Chislo" TargetType="TextBlock">
+        <Style x:Key="Number" TargetType="TextBlock">
             <Setter Property="FontSize" Value="22" />
             <Setter Property="FontWeight" Value="SemiBold" />
             <Setter Property="Margin" Value="0,4,0,0" />
         </Style>
 
-        <!-- Значок статуса проверки по уровню Uroven: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки. -->
-        <Style x:Key="ZnachokStatusa" TargetType="TextBlock">
+        <!-- Значок статуса проверки по уровню Level: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки. -->
+        <Style x:Key="StatusIcon" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="Segoe Fluent Icons, Segoe MDL2 Assets" />
             <Setter Property="FontSize" Value="16" />
             <Setter Property="Text" Value="&#xE7BA;" />
             <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCautionBrush}" />
             <Style.Triggers>
-                <DataTrigger Binding="{Binding Uroven}" Value="1">
+                <DataTrigger Binding="{Binding Level}" Value="1">
                     <Setter Property="Text" Value="&#xE73E;" />
                     <Setter Property="Foreground" Value="{DynamicResource SystemFillColorSuccessBrush}" />
                 </DataTrigger>
-                <DataTrigger Binding="{Binding Uroven}" Value="2">
+                <DataTrigger Binding="{Binding Level}" Value="2">
                     <Setter Property="Text" Value="&#xEA39;" />
                     <Setter Property="Foreground" Value="{DynamicResource SystemFillColorCriticalBrush}" />
                 </DataTrigger>
@@ -58,19 +58,19 @@
         </Style>
 
         <!-- Таблица «характеристика — значение» для паспорта модуля. -->
-        <DataTemplate x:Key="StrokaTablicy">
+        <DataTemplate x:Key="TableRow">
             <Grid Margin="0,4">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="220" />
                     <ColumnDefinition />
                 </Grid.ColumnDefinitions>
-                <TextBlock Style="{StaticResource Podpis}" Text="{Binding Key}" />
+                <TextBlock Style="{StaticResource Caption}" Text="{Binding Key}" />
                 <TextBlock Grid.Column="1" Text="{Binding Value}" TextWrapping="Wrap" />
             </Grid>
         </DataTemplate>
 
-        <!-- График загрузки памяти (данные — ObzorViewModel): сетка, заливка под линией и сама линия. -->
-        <DataTemplate x:Key="GrafikZagruzki">
+        <!-- График загрузки памяти (данные — OverviewViewModel): сетка, заливка под линией и сама линия. -->
+        <DataTemplate x:Key="LoadChart">
             <Viewbox Stretch="Fill">
                 <Canvas Width="600" Height="160" ClipToBounds="True">
                     <Line X1="0" Y1="1" X2="600" Y2="1" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
@@ -93,7 +93,7 @@
         </DataTemplate>
 
         <!-- Карта памяти: 256 клеток, по одной на блок буфера. 0 — не проверен, 1 — без ошибок, 2 — ошибка, 3 — ждёт текущего прохода. -->
-        <Style x:Key="KartaPamyati" TargetType="ItemsControl">
+        <Style x:Key="MemoryMap" TargetType="ItemsControl">
             <Setter Property="ItemsPanel">
                 <Setter.Value>
                     <ItemsPanelTemplate>
@@ -104,18 +104,18 @@
             <Setter Property="ItemTemplate">
                 <Setter.Value>
                     <DataTemplate>
-                        <Border x:Name="Kletka" Height="14" Margin="1.5" CornerRadius="3" ToolTip="{Binding Tip}"
+                        <Border x:Name="MemoryCell" Height="14" Margin="1.5" CornerRadius="3" ToolTip="{Binding Tip}"
                                 Background="{DynamicResource ControlStrongFillColorDisabledBrush}" />
                         <DataTemplate.Triggers>
                             <DataTrigger Binding="{Binding State}" Value="1">
-                                <Setter TargetName="Kletka" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                <Setter TargetName="MemoryCell" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding State}" Value="3">
-                                <Setter TargetName="Kletka" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
-                                <Setter TargetName="Kletka" Property="Opacity" Value="0.35" />
+                                <Setter TargetName="MemoryCell" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                <Setter TargetName="MemoryCell" Property="Opacity" Value="0.35" />
                             </DataTrigger>
                             <DataTrigger Binding="{Binding State}" Value="2">
-                                <Setter TargetName="Kletka" Property="Background" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                <Setter TargetName="MemoryCell" Property="Background" Value="{DynamicResource SystemFillColorCriticalBrush}" />
                             </DataTrigger>
                         </DataTemplate.Triggers>
                     </DataTemplate>

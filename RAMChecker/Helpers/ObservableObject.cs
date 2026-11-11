@@ -3,7 +3,7 @@ using System.ComponentModel;
 namespace RAMChecker.Helpers
 {
     // Базовый класс ViewModel: сообщает экрану, что данные изменились.
-    public abstract class NabludaemyObject : INotifyPropertyChanged
+    public abstract class ObservableObject : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
@@ -16,7 +16,7 @@ namespace RAMChecker.Helpers
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
             foreach (var property in properties)
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(property));
-            Komanda.Refresh();
+            RelayCommand.Refresh();
         }
     }
 }

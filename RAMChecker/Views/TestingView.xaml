@@ -1,9 +1,9 @@
-<UserControl x:Class="RAMChecker.Views.TestirovanieView"
+<UserControl x:Class="RAMChecker.Views.TestingView"
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="16,24,16,8">
-            <TextBlock Text="Тестирование" Style="{StaticResource Zagolovok}" />
+            <TextBlock Text="Тестирование" Style="{StaticResource PageTitle}" />
             <Grid>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="340" />
@@ -12,19 +12,19 @@
 
                 <!-- Параметры проверки. -->
                 <StackPanel>
-                    <Border Style="{StaticResource Kartochka}">
+                    <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="Параметры" Style="{StaticResource Podzagolovok}" />
-                            <TextBlock Text="Режим" Style="{StaticResource Podpis}" />
+                            <TextBlock Text="Параметры" Style="{StaticResource SectionTitle}" />
+                            <TextBlock Text="Режим" Style="{StaticResource Caption}" />
                             <ComboBox ItemsSource="{Binding Modes}" SelectedIndex="{Binding ModeIndex}" IsEnabled="{Binding IsIdle}" HorizontalAlignment="Stretch" Margin="0,4,0,16" />
-                            <TextBlock Style="{StaticResource Podpis}">
+                            <TextBlock Style="{StaticResource Caption}">
                                 <Run Text="Объём проверки:" />
                                 <Run Text="{Binding TestMemoryText, Mode=OneWay}" />
                             </TextBlock>
                             <Slider IsEnabled="{Binding IsIdle}" Minimum="64" Maximum="{Binding MaxMemoryMiB, Mode=OneWay}" Value="{Binding MemoryMiB}"
                                     SmallChange="16" LargeChange="256" Margin="0,4,0,12" />
                             <TextBlock Text="Недостаточно свободной памяти: Windows нужен резерв не меньше 1 ГБ или 10 % памяти."
-                                       Visibility="{Binding MemoryShort, Converter={StaticResource Vidimost}}" Style="{StaticResource Podpis}"
+                                       Visibility="{Binding MemoryShort, Converter={StaticResource BoolToVisibility}}" Style="{StaticResource Caption}"
                                        TextWrapping="Wrap" Margin="0,0,0,12" />
                             <CheckBox Content="Остановить при обнаружении ошибки" IsChecked="{Binding StopOnError}" IsEnabled="{Binding IsIdle}" Margin="0,0,0,16" />
                             <UniformGrid Columns="2">
@@ -36,9 +36,9 @@
                     </Border>
 
                     <!-- Журнал: компактные строки, новые сверху. -->
-                    <Border Style="{StaticResource Kartochka}">
+                    <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="Журнал" Style="{StaticResource Podzagolovok}" />
+                            <TextBlock Text="Журнал" Style="{StaticResource SectionTitle}" />
                             <ScrollViewer Height="260" VerticalScrollBarVisibility="Auto">
                                 <ItemsControl ItemsSource="{Binding Events}">
                                     <ItemsControl.ItemTemplate>
@@ -55,13 +55,13 @@
                 <StackPanel Grid.Column="1">
                     <!-- Итог последней проверки: цвет и значок как в списке результатов. Без итога шаблон
                          отрисовался бы с пустыми данными, поэтому плашка скрыта. -->
-                    <ContentControl Content="{Binding Itog}" Visibility="{Binding HasItog, Converter={StaticResource Vidimost}}">
+                    <ContentControl Content="{Binding LastResult}" Visibility="{Binding HasLastResult, Converter={StaticResource BoolToVisibility}}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate>
-                                <Border x:Name="Fon" CornerRadius="8" Padding="20,16" Margin="0,0,16,16"
+                                <Border x:Name="Banner" CornerRadius="8" Padding="20,16" Margin="0,0,16,16"
                                         Background="{DynamicResource SystemFillColorCautionBackgroundBrush}">
                                     <DockPanel>
-                                        <TextBlock Style="{StaticResource ZnachokStatusa}" FontSize="28" Margin="0,0,16,0" VerticalAlignment="Center" />
+                                        <TextBlock Style="{StaticResource StatusIcon}" FontSize="28" Margin="0,0,16,0" VerticalAlignment="Center" />
                                         <StackPanel>
                                             <TextBlock Text="{Binding StatusText}" FontSize="18" FontWeight="SemiBold" />
                                             <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" Margin="0,4,0,0" />
@@ -69,11 +69,11 @@
                                     </DockPanel>
                                 </Border>
                                 <DataTemplate.Triggers>
-                                    <DataTrigger Binding="{Binding Uroven}" Value="1">
-                                        <Setter TargetName="Fon" Property="Background" Value="{DynamicResource SystemFillColorSuccessBackgroundBrush}" />
+                                    <DataTrigger Binding="{Binding Level}" Value="1">
+                                        <Setter TargetName="Banner" Property="Background" Value="{DynamicResource SystemFillColorSuccessBackgroundBrush}" />
                                     </DataTrigger>
-                                    <DataTrigger Binding="{Binding Uroven}" Value="2">
-                                        <Setter TargetName="Fon" Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}" />
+                                    <DataTrigger Binding="{Binding Level}" Value="2">
+                                        <Setter TargetName="Banner" Property="Background" Value="{DynamicResource SystemFillColorCriticalBackgroundBrush}" />
                                     </DataTrigger>
                                 </DataTemplate.Triggers>
                             </DataTemplate>
@@ -81,55 +81,55 @@
                     </ContentControl>
 
                     <!-- Ход проверки. -->
-                    <Border Style="{StaticResource Kartochka}">
+                    <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="{Binding Stage}" Style="{StaticResource Podzagolovok}" />
+                            <TextBlock Text="{Binding Stage}" Style="{StaticResource SectionTitle}" />
                             <ProgressBar Value="{Binding Percent, Mode=OneWay}" Height="8" Margin="0,0,0,16" />
                             <UniformGrid Columns="4">
                                 <StackPanel>
-                                    <TextBlock Text="Прошло" Style="{StaticResource Podpis}" />
-                                    <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource Chislo}" />
+                                    <TextBlock Text="Прошло" Style="{StaticResource Caption}" />
+                                    <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource Number}" />
                                 </StackPanel>
                                 <StackPanel>
-                                    <TextBlock Text="Осталось" Style="{StaticResource Podpis}" />
-                                    <TextBlock Text="{Binding RemainingText}" Style="{StaticResource Chislo}" />
+                                    <TextBlock Text="Осталось" Style="{StaticResource Caption}" />
+                                    <TextBlock Text="{Binding RemainingText}" Style="{StaticResource Number}" />
                                 </StackPanel>
                                 <StackPanel>
-                                    <TextBlock Text="Проход" Style="{StaticResource Podpis}" />
-                                    <TextBlock Text="{Binding PassText}" Style="{StaticResource Chislo}" />
+                                    <TextBlock Text="Проход" Style="{StaticResource Caption}" />
+                                    <TextBlock Text="{Binding PassText}" Style="{StaticResource Number}" />
                                 </StackPanel>
                                 <StackPanel>
-                                    <TextBlock Text="Ошибок" Style="{StaticResource Podpis}" />
-                                    <TextBlock Text="{Binding ErrorCountText}" Style="{StaticResource Chislo}" />
+                                    <TextBlock Text="Ошибок" Style="{StaticResource Caption}" />
+                                    <TextBlock Text="{Binding ErrorCountText}" Style="{StaticResource Number}" />
                                 </StackPanel>
                             </UniformGrid>
                         </StackPanel>
                     </Border>
 
-                    <Border Style="{StaticResource Kartochka}">
+                    <Border Style="{StaticResource Card}">
                         <StackPanel>
-                            <TextBlock Text="Карта буфера проверки" Style="{StaticResource Podzagolovok}" />
-                            <ItemsControl ItemsSource="{Binding Kletki}" Style="{StaticResource KartaPamyati}" />
+                            <TextBlock Text="Карта буфера проверки" Style="{StaticResource SectionTitle}" />
+                            <ItemsControl ItemsSource="{Binding Cells}" Style="{StaticResource MemoryMap}" />
                             <TextBlock Text="Каждая клетка — 1/256 буфера. Яркая зелёная — блок прошёл текущий проход, тёмная — ждёт своей очереди, красная — найдены ошибки, серая — ещё не проверен."
-                                       Style="{StaticResource Podpis}" Margin="0,12,0,0" />
+                                       Style="{StaticResource Caption}" Margin="0,12,0,0" />
                         </StackPanel>
                     </Border>
 
                     <!-- Нагрузка во время проверки: скорость обработки буфера и загрузка памяти системы. -->
-                    <Border Style="{StaticResource Kartochka}">
+                    <Border Style="{StaticResource Card}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="200" />
                                 <ColumnDefinition />
                             </Grid.ColumnDefinitions>
                             <StackPanel>
-                                <TextBlock Text="Нагрузка" Style="{StaticResource Podzagolovok}" />
-                                <TextBlock Text="Скорость проверки" Style="{StaticResource Podpis}" />
-                                <TextBlock Text="{Binding SpeedText}" Style="{StaticResource Chislo}" Margin="0,4,0,12" />
-                                <TextBlock Text="Загрузка памяти" Style="{StaticResource Podpis}" />
-                                <TextBlock Text="{Binding Obzor.LoadText}" Style="{StaticResource Chislo}" />
+                                <TextBlock Text="Нагрузка" Style="{StaticResource SectionTitle}" />
+                                <TextBlock Text="Скорость проверки" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{Binding SpeedText}" Style="{StaticResource Number}" Margin="0,4,0,12" />
+                                <TextBlock Text="Загрузка памяти" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{Binding Overview.LoadText}" Style="{StaticResource Number}" />
                             </StackPanel>
-                            <ContentControl Grid.Column="1" Content="{Binding Obzor}" ContentTemplate="{StaticResource GrafikZagruzki}" />
+                            <ContentControl Grid.Column="1" Content="{Binding Overview}" ContentTemplate="{StaticResource LoadChart}" />
                         </Grid>
                     </Border>
                 </StackPanel>

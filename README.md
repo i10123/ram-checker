@@ -24,10 +24,10 @@
 
 ### Имитация ошибки
 
-Чтобы увидеть, как программа показывает неисправную память, запустите её с ключом `--imitaciya`:
+Чтобы увидеть, как программа показывает неисправную память, запустите её с ключом `--imitation`:
 
 ```powershell
-dotnet run --project RAMChecker/RAMChecker.csproj -c Release -- --imitaciya
+dotnet run --project RAMChecker/RAMChecker.csproj -c Release -- --imitation
 ```
 
 После заполнения в блоке 86 карты переворачивается бит 5 одной ячейки. Прямой обход находит его в каждом проходе: клетка краснеет, ошибка попадает в журнал, результаты и отчёт.
@@ -80,10 +80,10 @@ dotnet run --project RAMChecker.Tests -c Release -- spd spd.txt
 | Папка | Содержимое |
 |---|---|
 | `Views/` | Разметка трёх страниц |
-| `ViewModels/` | `MainViewModel` — навигация и история; `ObzorViewModel` и `TestirovanieViewModel` — страницы «Обзор» и «Тестирование» |
+| `ViewModels/` | `MainViewModel` — навигация и история; `OverviewViewModel` и `TestingViewModel` — страницы «Обзор» и «Тестирование» |
 | `Models/` | Модуль памяти и результат проверки |
 | `Services/` | WMI, SPD и драйвер PawnIO, алгоритм проверки, замер скорости, мониторинг, хранение и отчёты |
-| `Helpers/` | `Komanda` (команда кнопки) и `NabludaemyObject` (базовый класс ViewModel) |
+| `Helpers/` | `RelayCommand` (команда кнопки) и `ObservableObject` (базовый класс ViewModel) |
 | `RAMChecker.Tests/` | Самопроверки (рядом с папкой `RAMChecker/`) |
 
 История хранится в `%LOCALAPPDATA%/MemScope/`. Логотип нарисован в `Assets/Logo.xaml`, иконка `logo.ico` собрана из него.

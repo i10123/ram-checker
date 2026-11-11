@@ -29,8 +29,8 @@ namespace RAMChecker.Services
                     RAM_formFactor = GetFormFactor(Convert.ToUInt32(module["FormFactor"])),
                     // На многих платах слоты разных каналов называются одинаково, поэтому добавляем банк.
                     RAM_slot = $"{GetTextValue(module["BankLabel"])} · {GetTextValue(module["DeviceLocator"])}",
-                    RAM_speed = speed > 0 ? $"{speed} MT/s ({speed / 2} МГц)" : ModuleMemoryModel.NetDannyh,
-                    RAM_voltage = voltage > 0 ? $"{voltage / 1000m:0.00} В" : ModuleMemoryModel.NetDannyh
+                    RAM_speed = speed > 0 ? $"{speed} MT/s ({speed / 2} МГц)" : ModuleMemoryModel.NoData,
+                    RAM_voltage = voltage > 0 ? $"{voltage / 1000m:0.00} В" : ModuleMemoryModel.NoData
                 });
             }
             return modulesMemory;
@@ -39,7 +39,7 @@ namespace RAMChecker.Services
         private static string GetTextValue(object? value)
         {
             var text = value?.ToString()?.Trim();
-            return string.IsNullOrWhiteSpace(text) ? ModuleMemoryModel.NetDannyh : text;
+            return string.IsNullOrWhiteSpace(text) ? ModuleMemoryModel.NoData : text;
         }
 
         // Коды SMBIOS переводим в название поколения памяти.
@@ -50,14 +50,14 @@ namespace RAMChecker.Services
             30 => "LPDDR4",
             34 => "DDR5",
             35 => "LPDDR5",
-            _ => ModuleMemoryModel.NetDannyh
+            _ => ModuleMemoryModel.NoData
         };
 
         private static string GetFormFactor(uint value) => value switch
         {
             8 => "DIMM",
             12 => "SO-DIMM",
-            _ => ModuleMemoryModel.NetDannyh
+            _ => ModuleMemoryModel.NoData
         };
     }
 }

@@ -9,9 +9,9 @@ using RAMChecker.Services;
 
 namespace RAMChecker.Views;
 
-public partial class RezultatyView : UserControl
+public partial class ResultsView : UserControl
 {
-    public RezultatyView() => InitializeComponent();
+    public ResultsView() => InitializeComponent();
 
     // Сохраняет HTML-отчёт выбранной проверки и сразу открывает его в браузере.
     private void Export_Click(object sender, RoutedEventArgs e)

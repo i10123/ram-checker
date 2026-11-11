@@ -9,12 +9,12 @@ using RAMChecker.Services;
 
 namespace RAMChecker.ViewModels;
 
-public record Stolbec(string Name, string Value, double Width);
+public record BarItem(string Name, string Value, double Width);
 
 // Страница «Обзор»: модули памяти, загрузка в реальном времени и замер скорости.
-public class ObzorViewModel : NabludaemyObject
+public class OverviewViewModel : ObservableObject
 {
-    private readonly MainViewModel glavnaya;
+    private readonly MainViewModel main;
     private readonly Queue<double> samples = new();
     private SpdReader? spd;
     private Task? temperatureTask;
@@ -25,13 +25,13 @@ public class ObzorViewModel : NabludaemyObject
     // потому что изменения внутри одной коллекции WPF не перерисовывает.
     public PointCollection UsagePoints { get; private set; } = [];
     public PointCollection UsageArea { get; private set; } = [];
-    public List<Stolbec> BenchmarkBars { get; private set; } = [];
+    public List<BarItem> BenchmarkBars { get; private set; } = [];
     public string BenchmarkText { get; private set; } = "Замер ещё не выполнялся";
     public bool BenchmarkRunning { get; private set; }
     public string SpdStatus { get; private set; } = "";
     public bool NeedsAdministrator { get; } = !new WindowsPrincipal(WindowsIdentity.GetCurrent()).IsInRole(WindowsBuiltInRole.Administrator);
-    public Komanda BenchmarkCommand { get; }
-    public Komanda AdministratorCommand { get; }
+    public RelayCommand BenchmarkCommand { get; }
+    public RelayCommand AdministratorCommand { get; }
 
     public string TotalText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Total);
     public string UsedText => Memory is null ? "—" : $"{MemorySnapshot.Format(Memory.Used)} · {Memory.Load:0}%";
@@ -46,11 +46,11 @@ public class ObzorViewModel : NabludaemyObject
     public bool Loading { get; private set; } = true;
     public string ModulesText => Loading ? "…" : $"{ModulesMemory.Count} шт. · {ModulesMemory.FirstOrDefault()?.RAM_type ?? "—"}";
 
-    public ObzorViewModel(MainViewModel glavnaya)
+    public OverviewViewModel(MainViewModel main)
     {
-        this.glavnaya = glavnaya;
-        BenchmarkCommand = new(async () => await BenchmarkAsync(), () => !BenchmarkRunning && !glavnaya.Test.IsRunning);
-        AdministratorCommand = new(RestartAsAdministrator, () => !BenchmarkRunning && !glavnaya.Test.IsRunning);
+        this.main = main;
+        BenchmarkCommand = new(async () => await BenchmarkAsync(), () => !BenchmarkRunning && !main.Test.IsRunning);
+        AdministratorCommand = new(RestartAsAdministrator, () => !BenchmarkRunning && !main.Test.IsRunning);
     }
 
     public ModuleMemoryModel? SelectedModule
@@ -85,7 +85,7 @@ public class ObzorViewModel : NabludaemyObject
             // Чтение температуры начнётся только теперь, когда список модулей заполнен.
             spd = reader;
         }
-        catch (Exception ex) { glavnaya.Notice = "Не удалось получить сведения о модулях: " + ex.Message; }
+        catch (Exception ex) { main.Notice = "Не удалось получить сведения о модулях: " + ex.Message; }
         Loading = false;
         Changed(nameof(Loading), nameof(ModulesText));
     }
@@ -156,10 +156,10 @@ public class ObzorViewModel : NabludaemyObject
                 samples.Dequeue();
             UpdateMemoryRows(Memory);
             // График виден только на странице теста — на других страницах его не пересчитываем.
-            if (glavnaya.SelectedPage == 1)
+            if (main.SelectedPage == 1)
                 UpdateChart();
         }
-        catch (Exception ex) { glavnaya.Notice = "Мониторинг недоступен: " + ex.Message; }
+        catch (Exception ex) { main.Notice = "Мониторинг недоступен: " + ex.Message; }
         if (spd is not null && temperatureTask is not { IsCompleted: false })
             temperatureTask = ReadTemperatureAsync(spd);
         Changed(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText), nameof(CommitText), nameof(CommitUsed), nameof(CommitFree));
@@ -177,7 +177,7 @@ public class ObzorViewModel : NabludaemyObject
         }
         catch (Exception) { values = new double?[modules.Length]; } // Сбой шины — температура неизвестна.
         for (int i = 0; i < modules.Length; i++)
-            modules[i].RAM_temperature = values[i] is double t ? $"{t:0.0} °C" : ModuleMemoryModel.NetDannyh;
+            modules[i].RAM_temperature = values[i] is double t ? $"{t:0.0} °C" : ModuleMemoryModel.NoData;
         Changed(nameof(ModuleRows));
     }
 
@@ -197,7 +197,7 @@ public class ObzorViewModel : NabludaemyObject
     {
         List<KeyValuePair<string, string>> rows =
         [
-            new("Системный кэш", m.Cache is ulong cache ? MemorySnapshot.Format(cache) : ModuleMemoryModel.NetDannyh),
+            new("Системный кэш", m.Cache is ulong cache ? MemorySnapshot.Format(cache) : ModuleMemoryModel.NoData),
             new("Файл подкачки", m.CommitLimit is ulong l && l > m.Total ? MemorySnapshot.Format(l - m.Total) : "Нет"),
             new("Доступно для проверки", MemorySnapshot.Format((ulong)MemorySnapshot.SafeTestBytes(m)))
         ];
@@ -217,7 +217,7 @@ public class ObzorViewModel : NabludaemyObject
             var r = await MemoryBenchmark.RunAsync();
             double max = Math.Max(r.ReadMBs, Math.Max(r.WriteMBs, r.CopyMBs));
             BenchmarkBars = [.. new[] { ("Чтение", r.ReadMBs), ("Запись", r.WriteMBs), ("Копирование", r.CopyMBs) }
-                .Select(b => new Stolbec(b.Item1, $"{b.Item2:N0} МБ/с", b.Item2 / max * 200))];
+                .Select(b => new BarItem(b.Item1, $"{b.Item2:N0} МБ/с", b.Item2 / max * 200))];
             BenchmarkText = $"Задержка: {r.LatencyNs:0.0} нс";
         }
         catch (Exception ex) { BenchmarkText = "Замер не выполнен: " + ex.Message; }
