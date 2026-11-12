@@ -32,7 +32,15 @@ public sealed class SpdReader : IDisposable
             smbus = new PawnIO("SmbusI801.bin");
             amd = false;
         }
-        busLock = new(false, @"Global\Access_SMBUS.HTP.Method");
+        try
+        {
+            busLock = new(false, @"Global\Access_SMBUS.HTP.Method");
+        }
+        catch
+        {
+            smbus.Dispose(); // Блокировку создать не удалось — драйвер не должен остаться открытым.
+            throw;
+        }
         // На AMD микросхемы SPD подключены к порту 0. Другая программа могла переключить порт, поэтому он выбирается
         // явно и, как требует описание модуля, под блокировкой шины. Ошибка значит, что контроллер занят или неисправен.
         if (amd && !Locked(() => smbus.Execute("ioctl_piix4_port_sel", [0], new long[1])))
@@ -123,7 +131,10 @@ public sealed class SpdReader : IDisposable
         int density = b[4] & 0x0F, densityMb = density < 8 ? 256 << density : density == 8 ? 12288 : 24576;
         int dies = (b[6] & 3) == 2 ? (b[6] >> 4 & 7) + 1 : 1;
         int sizeGB = densityMb / 8 * (8 << (b[13] & 7)) / (4 << (b[12] & 7)) * ((b[12] >> 3 & 7) + 1) * dies / 1024;
-        return new(address, 2_000_000 / tCK, cl, rcd, rp, ras, rc, sizeGB, (b[14] & 0x80) != 0);
+        // Скорости DDR4 идут с шагом 133⅓ MT/s, а tCK в паспорте округлён до пикосекунды: 0,938 нс дало бы 2132,
+        // а не 2133. Поэтому скорость округляется до ближайшего шага, а дробная часть отбрасывается (2666,67 → 2666).
+        int speed = (int)(Math.Round(2_000_000d / tCK * 3 / 400) * 400 / 3);
+        return new(address, speed, cl, rcd, rp, ras, rc, sizeGB, (b[14] & 0x80) != 0);
     }
 
     // Контрольная сумма JEDEC защищает от ошибок чтения по шине.
