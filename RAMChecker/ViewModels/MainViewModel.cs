@@ -20,7 +20,8 @@ public class MainViewModel : ObservableObject
     public ObservableCollection<DiagnosticResult> History { get; } = [];
     public string[] Navigation { get; } = ["Обзор", "Тестирование", "Результаты"];
     public bool HasNotice => Notice.Length > 0;
-    public bool HasHistory => History.Count > 0;
+    // Подробности показываются только для выбранной проверки: выделение в списке можно снять щелчком с Ctrl.
+    public bool HasSelectedResult => SelectedResult is not null;
     public bool HasNoHistory => History.Count == 0;
     public RelayCommand DeleteResultCommand { get; }
 
@@ -41,8 +42,12 @@ public class MainViewModel : ObservableObject
         get;
         set
         {
-            field = value;
+            // Щелчок с Ctrl снимает выделение в меню (индекс -1) — тогда остаётся прежняя страница.
+            if (value >= 0)
+                field = value;
             Changed();
+            if (field == 1)
+                Overview.UpdateChart(); // График не пересчитывался, пока страница теста была скрыта.
         }
     }
 
@@ -73,8 +78,9 @@ public class MainViewModel : ObservableObject
             var items = storage.ReadHistory(out int skipped);
             foreach (var r in items.OrderByDescending(r => r.Started))
                 History.Add(r);
-            if (skipped > 0)
-                Notice = $"Пропущено повреждённых записей истории: {skipped}. Исходный файл сохранён как history.bad.json.";
+            if (skipped != 0)
+                Notice = (skipped > 0 ? $"Пропущено повреждённых записей истории: {skipped}." : "Файл истории повреждён, история начата заново.")
+                    + " Исходный файл сохранён как history.bad.json.";
             SelectedResult = History.FirstOrDefault();
         }
         catch (Exception ex)
@@ -86,6 +92,8 @@ public class MainViewModel : ObservableObject
         timer.Start();
         loading = Overview.LoadModulesAsync();
         await loading;
+        // Запуск окна и чтение WMI оставляют много временных объектов — сразу возвращаем эту память Windows.
+        MemoryMonitor.ReturnFreeMemory();
     }
 
     public void AddResult(DiagnosticResult result)

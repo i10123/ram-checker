@@ -27,12 +27,18 @@ public class LocalStorage
     // Правильный JSON может содержать неверные данные (файл правили вручную или он повреждён): такие записи
     // пропускаются, иначе они сломали бы карту и отчёт. Записи разбираются по одной: неизвестный статус или
     // поле не того типа портят только свою запись, а не всю историю. Исходный файл сохраняется рядом,
-    // потому что следующее сохранение истории его перезапишет.
+    // потому что следующее сохранение истории его перезапишет. Если файл не разбирается целиком,
+    // история начинается заново, а skipped равен -1.
     public List<DiagnosticResult> ReadHistory(out int skipped)
     {
-        var all = Read<List<JsonElement>>("history.json") ?? [];
+        List<JsonElement>? all = null;
+        try
+        {
+            all = Read<List<JsonElement>>("history.json") ?? [];
+        }
+        catch (JsonException) { } // Файл не является списком записей.
         var items = new List<DiagnosticResult>();
-        foreach (var element in all)
+        foreach (var element in all ?? [])
         {
             try
             {
@@ -41,8 +47,8 @@ public class LocalStorage
             }
             catch (JsonException) { } // Запись не разбирается — пропускаем её.
         }
-        skipped = all.Count - items.Count;
-        if (skipped > 0)
+        skipped = all is null ? -1 : all.Count - items.Count;
+        if (skipped != 0)
             File.Copy(Path.Combine(DirectoryPath, "history.json"), Path.Combine(DirectoryPath, "history.bad.json"), overwrite: true);
         // Незавершённая проверка сохранена промежуточным автосохранением: счётчик, карта и ошибки на тот момент.
         foreach (var item in items.Where(i => i.Status == DiagnosticStatus.Running))

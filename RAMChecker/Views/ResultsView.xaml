@@ -51,7 +51,7 @@
 
         <!-- Подробности выбранной проверки. -->
         <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource Card}"
-                Visibility="{Binding HasHistory, Converter={StaticResource BoolToVisibility}}">
+                Visibility="{Binding HasSelectedResult,Converter={StaticResource BoolToVisibility}}">
             <DockPanel DataContext="{Binding SelectedResult}">
                 <StackPanel DockPanel.Dock="Top">
                     <TextBlock Text="{Binding StatusText}" FontSize="22" FontWeight="SemiBold" />
