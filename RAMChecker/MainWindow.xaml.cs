@@ -7,7 +7,7 @@ namespace RAMChecker
     // Код окна: запуск модели при открытии и корректная остановка проверки при закрытии.
     public partial class MainWindow : Window
     {
-        private bool closeAllowed;
+        private bool closing, closeAllowed;
 
         public MainWindow() => InitializeComponent();
 
@@ -23,6 +23,10 @@ namespace RAMChecker
             if (closeAllowed)
                 return;
             e.Cancel = true;
+            // Крестик в заголовке работает и у отключённого окна: повторное нажатие не должно завершать работу второй раз.
+            if (closing)
+                return;
+            closing = true;
             IsEnabled = false;
             try
             {
