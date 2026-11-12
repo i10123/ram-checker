@@ -87,7 +87,7 @@ public class OverviewViewModel : ObservableObject
         }
         catch (Exception ex) { main.Notice = "Не удалось получить сведения о модулях: " + ex.Message; }
         Loading = false;
-        Changed(nameof(Loading), nameof(ModulesText));
+        Changed(); // Изменились сразу список модулей, состояние загрузки и строка о чтении SPD.
     }
 
     // Пары «модуль из WMI — паспорт SPD». Надёжный признак планки — серийный номер и модель из второй страницы SPD:
@@ -119,7 +119,7 @@ public class OverviewViewModel : ObservableObject
             reader = new SpdReader();
             var infos = reader.ReadAll();
             var pairs = Match(modules, infos, out string how);
-            SpdStatus = infos.Count == 0 ? "Микросхемы SPD не найдены на шине SMBus."
+            SpdStatus = infos.Count == 0 ? "Паспорт SPD DDR4 не найден на шине SMBus."
                 : pairs.Count == 0 ? $"Паспорт SPD прочитан у {infos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
                 : pairs.Count < modules.Count ? $"Паспорт SPD найден у {pairs.Count} из {modules.Count} модулей."
                 : "";
@@ -176,14 +176,23 @@ public class OverviewViewModel : ObservableObject
             values = await Task.Run(() => modules.Select(m => reader.Temperature(m.SpdAddress)).ToArray());
         }
         catch (Exception) { values = new double?[modules.Length]; } // Сбой шины — температура неизвестна.
+        // Таблица модуля перестраивается, только если температура на экране действительно изменилась.
+        bool changed = false;
         for (int i = 0; i < modules.Length; i++)
-            modules[i].RAM_temperature = values[i] is double t ? $"{t:0.0} °C" : ModuleMemoryModel.NoData;
-        Changed(nameof(ModuleRows));
+        {
+            string text = values[i] is double t ? $"{t:0.0} °C" : ModuleMemoryModel.NoData;
+            changed |= text != modules[i].RAM_temperature;
+            modules[i].RAM_temperature = text;
+        }
+        if (changed)
+            Changed(nameof(ModuleRows));
     }
 
     // График последних 60 измерений в области 600 × 160; заливка замыкается по нижнему краю.
-    private void UpdateChart()
+    public void UpdateChart()
     {
+        if (samples.Count == 0)
+            return;
         var line = samples.Select((load, i) => new Point((60 - samples.Count + i) * 600 / 59d, 160 - load * 1.6)).ToList();
         UsagePoints = new PointCollection(line);
         UsageArea = new PointCollection(line.Append(new(600, 160)).Append(new(line[0].X, 160)));
@@ -230,7 +239,8 @@ public class OverviewViewModel : ObservableObject
     {
         try
         {
-            Process.Start(new ProcessStartInfo(Environment.ProcessPath!) { UseShellExecute = true, Verb = "runas" });
+            // Ключи запуска (например, --imitation) передаются новому процессу.
+            Process.Start(new ProcessStartInfo(Environment.ProcessPath!, Environment.GetCommandLineArgs().Skip(1)) { UseShellExecute = true, Verb = "runas" });
             Application.Current.MainWindow.Close();
         }
         catch (Exception) { } // Пользователь отменил запрос UAC — продолжаем без прав администратора.

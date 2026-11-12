@@ -60,8 +60,11 @@ public class TestingViewModel : ObservableObject
     // Резерв для Windows: проверять можно только часть свободной памяти. Безопасный объём может быть и меньше
     // минимальных 64 МБ — тогда запуск запрещён, а ползунку всё равно нужен максимум не меньше минимума.
     private static double SafeMiB(MemorySnapshot? m) => m is null ? 0 : MemorySnapshot.SafeTestBytes(m) >> 20;
-    public double MaxMemoryMiB => Math.Max(64, SafeMiB(main.Overview.Memory));
-    public bool MemoryShort => IsIdle && MemoryMiB > SafeMiB(main.Overview.Memory);
+    // Во время проверки буфер сам занимает свободную память: максимум не опускается ниже выбранного объёма,
+    // иначе ползунок на время проверки уезжал бы в сторону.
+    public double MaxMemoryMiB => Math.Max(IsRunning ? MemoryMiB : 64, SafeMiB(main.Overview.Memory));
+    // Стресс-режим сам берёт весь допустимый объём, поэтому ему достаточно минимальных 64 МБ.
+    public bool MemoryShort => IsIdle && (ModeIndex == 3 ? 64 : MemoryMiB) > SafeMiB(main.Overview.Memory);
 
     // Объём кратен 16 МБ, чтобы буфер делился на 256 равных блоков карты.
     public double MemoryMiB
@@ -132,6 +135,7 @@ public class TestingViewModel : ObservableObject
 
         // Сервис сообщает прогресс из фонового потока, Progress переносит его в поток интерфейса.
         var last = (Seconds: 0d, Bytes: 0L);
+        var logged = (Seconds: -10d, Errors: 0L); // когда и с каким числом ошибок проход записан в журнал последний раз
         var progress = new Progress<DiagnosticProgress>(p =>
         {
             // Скорость — сколько гигабайт буфера записано и проверено за время с прошлого отчёта.
@@ -142,8 +146,13 @@ public class TestingViewModel : ObservableObject
             }
             if (p.Map is not null)
                 Cells = MemoryCell.From(p.Map, session.RequestedBytes);
-            if (p.Passes > session.Passes)
+            // На небольшом буфере проходит несколько проходов в секунду. Чтобы журнал не вытеснял сам себя, проход
+            // записывается не чаще раза в 10 секунд; проход, в котором появилась первая ошибка, записывается всегда.
+            if (p.Passes > session.Passes && (p.Elapsed.TotalSeconds - logged.Seconds >= 10 || p.ErrorCount > 0 != logged.Errors > 0))
+            {
                 Log($"Проход {p.Passes} завершён, ошибок: {p.ErrorCount}");
+                logged = (p.Elapsed.TotalSeconds, p.ErrorCount);
+            }
             (Stage, Percent, PassText) = (p.Stage, p.Percent, p.Pass.ToString());
             session.ApplyProgress(p);
             Changed();
