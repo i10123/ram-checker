@@ -97,7 +97,9 @@ var im2 = await RunAsync(64L << 20, null, true, progress, CancellationToken.None
 Check(im2.Status == DiagnosticStatus.Errors && im2.ErrorCount == 1, "имитация с остановкой на первой ошибке");
 using (var cts = new CancellationTokenSource(300))
 {
-    var s = await RunAsync(1L << 30, null, false, progress, cts.Token);
+    double maxPercent = 0;
+    var s = await RunAsync(1L << 30, null, false, new SyncProgress<DiagnosticProgress>(p => maxPercent = Math.Max(maxPercent, p.Percent)), cts.Token);
+    Check(maxPercent is > 0 and <= 100, $"циклическая проверка: процент прохода не выходит за 100 (наибольший {maxPercent:0})");
     Check(s.Status == DiagnosticStatus.Stopped && s.ElapsedSeconds < 1, $"циклическая проверка 1 ГБ останавливается за {(s.ElapsedSeconds - 0.3) * 1000:0} мс после отмены");
 }
 
@@ -146,6 +148,10 @@ bool readable = true;
 try { checkedHistory = storage.ReadHistory(out skippedRecords); }
 catch (System.Text.Json.JsonException) { readable = false; }
 Check(readable && checkedHistory.Count == 1 && skippedRecords == 3, "неизвестный статус и неверный тип поля не мешают прочитать остальные записи");
+File.WriteAllText(historyPath, "{ это не список записей");
+checkedHistory = storage.ReadHistory(out skippedRecords);
+Check(checkedHistory.Count == 0 && skippedRecords == -1 && File.ReadAllText(Path.Combine(storage.DirectoryPath, "history.bad.json")).StartsWith("{ это"),
+    "файл истории, который не разбирается целиком, сохраняется рядом, история начинается заново");
 int notices = 0;
 early.PropertyChanged += (_, _) => notices++;
 early.ApplyProgress(new("", 1, 1, 0, TimeSpan.FromHours(25), 1, 0, null, null));
@@ -186,6 +192,8 @@ Check(SpdReader.Decode(0x50, Spd(b => b[20] = b[21] = b[22] = 0)) is null, "пу
 // Поддерживается только CL7, а tAA = 30 нс требует CL40 — за пределами списка.
 Check(SpdReader.Decode(0x50, Spd(b => (b[20], b[21], b[22], b[24], b[123]) = (1, 0, 0, 240, 0))) is null, "расчётный CL выше списка поддерживаемых отклоняется");
 Check(SpdReader.Decode(0x50, spd[..100]) is null, "слишком короткий паспорт отклоняется");
+// tCK = 0,938 нс (8 шагов по 0,125 нс минус 62 пс) — это DDR4-2133, хотя 2 000 000 / 938 = 2132.
+Check(SpdReader.Decode(0x50, Spd(b => (b[18], b[125]) = (8, unchecked((byte)-62))))?.NominalSpeed == 2133, "скорость округляется до стандартной: 2133, а не 2132");
 
 // Сопоставление с WMI, как на ноутбуке с распаянной памятью: у первого модуля микросхемы SPD нет,
 // паспорт по адресу 0x50 принадлежит второму модулю — порядок адресов и слотов не совпадает.
