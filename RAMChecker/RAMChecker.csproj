@@ -8,8 +8,6 @@
         <AssemblyName>RAMChecker</AssemblyName>
         <RootNamespace>RAMChecker</RootNamespace>
         <ApplicationIcon>Assets\logo.ico</ApplicationIcon>
-        <!-- Буфер проверки выделяется вне сборщика мусора через указатели. -->
-        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
         <!-- Тема Fluent встроена в WPF, но помечена как предварительная. -->
         <NoWarn>$(NoWarn);WPF0001</NoWarn>
         <!-- Экономия памяти: сборка мусора без фонового потока и с более частым сжатием кучи. -->
@@ -23,6 +21,7 @@
         <Resource Include="Assets\logo.ico" />
     </ItemGroup>
     <ItemGroup>
+        <ProjectReference Include="..\RAMChecker.Core\RAMChecker.Core.csproj" />
         <ProjectReference Include="..\RAMChecker.Hardware\RAMChecker.Hardware.csproj" />
     </ItemGroup>
 </Project>

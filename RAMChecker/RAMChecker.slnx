@@ -1,5 +1,6 @@
 <Solution>
     <Project Path="RAMChecker.csproj" />
+    <Project Path="../RAMChecker.Core/RAMChecker.Core.csproj" />
     <Project Path="../RAMChecker.Hardware/RAMChecker.Hardware.csproj" />
     <Project Path="../RAMChecker.Tests/RAMChecker.Tests.csproj" />
 </Solution>
