@@ -42,7 +42,7 @@ public class OverviewViewModel : ObservableObject
     public GridLength CommitFree => new(Memory is { Committed: ulong c, CommitLimit: ulong l } && l > c ? l - c : 1, GridUnitType.Star);
     public List<KeyValuePair<string, string>> MemoryRows { get; private set; } = [];
     public string AvailableText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Available);
-    // Пока WMI и SPD читаются в фоне, вместо пустого списка показывается состояние загрузки.
+    // Пока SMBIOS и SPD читаются в фоне, вместо пустого списка показывается состояние загрузки.
     public bool Loading { get; private set; } = true;
     public string ModulesText => Loading ? "…" : $"{ModulesMemory.Count} шт. · {ModulesMemory.FirstOrDefault()?.RAM_type ?? "—"}";
 
@@ -77,7 +77,7 @@ public class OverviewViewModel : ObservableObject
     {
         try
         {
-            var modules = await Task.Run(() => new WmiServiceMemory().GetModulesMemory());
+            var modules = await Task.Run(SmbiosMemory.Read);
             var reader = NeedsAdministrator ? null : await Task.Run(() => ReadSpd(modules));
             foreach (var m in modules)
                 ModulesMemory.Add(m);
@@ -90,11 +90,11 @@ public class OverviewViewModel : ObservableObject
         Changed(); // Изменились сразу список модулей, состояние загрузки и строка о чтении SPD.
     }
 
-    // Пары «модуль из WMI — паспорт SPD». Надёжный признак планки — серийный номер и модель из второй страницы SPD:
+    // Пары «модуль из SMBIOS — паспорт SPD». Надёжный признак планки — серийный номер и модель из второй страницы SPD:
     // пара принимается, если они совпали ровно у одного модуля и одного паспорта. Распаянная на плате память
     // микросхемы SPD не имеет, такой модуль остаётся без пары. Если по номеру не нашлось ни одной пары (номер не
-    // прочитан или BIOS записал его в WMI иначе), паспорта сопоставляются по порядку (адреса SPD 0x50, 0x51… и список
-    // WMI обычно идут от первого слота), но только если число модулей и объём каждого совпадают. Если объёмы всех
+    // прочитан или BIOS записал его в SMBIOS иначе), паспорта сопоставляются по порядку (адреса SPD 0x50, 0x51… и список
+    // SMBIOS обычно идут от первого слота), но только если число модулей и объём каждого совпадают. Если объёмы всех
     // планок разные, совпадение объёма подтверждает пару; если есть одинаковые, их можно перепутать.
     public static List<(ModuleMemoryModel Module, SpdInfo Info)> Match(List<ModuleMemoryModel> modules, List<SpdInfo> infos, out string how)
     {

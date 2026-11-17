@@ -92,7 +92,7 @@ public class MainViewModel : ObservableObject
         timer.Start();
         loading = Overview.LoadModulesAsync();
         await loading;
-        // Запуск окна и чтение WMI оставляют много временных объектов — сразу возвращаем эту память Windows.
+        // Запуск окна и чтение SMBIOS оставляют много временных объектов — сразу возвращаем эту память Windows.
         MemoryMonitor.ReturnFreeMemory();
     }
 

@@ -5,7 +5,7 @@ namespace RAMChecker.Services;
 
 public record SpdInfo(byte Address, int NominalSpeed, int CL, int RCD, int RP, int RAS, int RC, int SizeGB, bool HasSensor)
 {
-    // Серийный номер и модель планки — по ним паспорт сопоставляется с модулем из WMI.
+    // Серийный номер и модель планки — по ним паспорт сопоставляется с модулем из SMBIOS.
     public string Serial { get; init; } = "";
     public string Part { get; init; } = "";
 }
@@ -127,7 +127,7 @@ public sealed class SpdReader : IDisposable
         if (cl >= first + 30 || new[] { aa, rcd, rp, ras, rc }.Min() <= 0)
             return null;
         // Объём планки: ёмкость кристалла × число кристаллов на шине (ширина шины / ширина кристалла) × ранги,
-        // у сборок 3DS ещё × число кристаллов в корпусе. Нужен, чтобы сверить паспорт с модулем из WMI.
+        // у сборок 3DS ещё × число кристаллов в корпусе. Нужен, чтобы сверить паспорт с модулем из SMBIOS.
         int density = b[4] & 0x0F, densityMb = density < 8 ? 256 << density : density == 8 ? 12288 : 24576;
         int dies = (b[6] & 3) == 2 ? (b[6] >> 4 & 7) + 1 : 1;
         int sizeGB = densityMb / 8 * (8 << (b[13] & 7)) / (4 << (b[12] & 7)) * ((b[12] >> 3 & 7) + 1) * dies / 1024;

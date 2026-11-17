@@ -195,7 +195,43 @@ Check(SpdReader.Decode(0x50, spd[..100]) is null, "слишком коротки
 // tCK = 0,938 нс (8 шагов по 0,125 нс минус 62 пс) — это DDR4-2133, хотя 2 000 000 / 938 = 2132.
 Check(SpdReader.Decode(0x50, Spd(b => (b[18], b[125]) = (8, unchecked((byte)-62))))?.NominalSpeed == 2133, "скорость округляется до стандартной: 2133, а не 2132");
 
-// Сопоставление с WMI, как на ноутбуке с распаянной памятью: у первого модуля микросхемы SPD нет,
+// --- SMBIOS ---
+// Таблица из двух записей: планка DDR4 на 8 ГБ с тремя строками и конец таблицы. Первая запись — другого типа и пропускается.
+byte[] Record(byte type, int formatted, Action<byte[]> fill, params string[] strings)
+{
+    var body = new byte[formatted];
+    (body[0], body[1]) = (type, (byte)formatted);
+    fill(body);
+    var text = strings.Length == 0 ? [(byte)0, (byte)0] : strings.SelectMany(t => Encoding.ASCII.GetBytes(t + "\0")).Append((byte)0).ToArray();
+    return [.. body, .. text];
+}
+byte[] Table(params byte[][] records)
+{
+    byte[] table = [.. records.SelectMany(x => x), .. Record(127, 4, _ => { })];
+    return [0, 3, 3, 0, .. BitConverter.GetBytes(table.Length), .. table]; // заголовок RawSMBIOSData
+}
+Action<byte[]> Dimm(ushort size, byte type) => b =>
+{
+    BitConverter.GetBytes(size).CopyTo(b, 0x0C);
+    (b[0x0E], b[0x10], b[0x11], b[0x12], b[0x17], b[0x18], b[0x1A]) = (13, 1, 2, type, 3, 4, 5);
+    BitConverter.GetBytes((ushort)3200).CopyTo(b, 0x20);
+    BitConverter.GetBytes((ushort)1350).CopyTo(b, 0x26);
+    if (size == 0x7FFF)
+        BitConverter.GetBytes(16384).CopyTo(b, 0x1C); // расширенный размер в МБ
+};
+var smbios = SmbiosMemory.Parse(Table(Record(1, 8, _ => { }, "BIOS"),
+    Record(17, 0x28, Dimm(8192, 26), "DIMM 1", "Channel A", "Kingston ", "1234ABCD", "KHX3200 "),
+    Record(17, 0x28, Dimm(0, 26), "DIMM 2", "Channel B"),   // пустой слот
+    Record(17, 0x28, Dimm(0x7FFF, 34), "DIMM 3", "Channel C", "Kingston ", "1234ABCD", "KHX3200 ")));
+Check(smbios.Count == 2 && smbios[0] is { size_GB: 8, RAM_maker: "Kingston", RAM_partNumber: "KHX3200", RAM_serialNumber: "1234ABCD", RAM_type: "DDR4",
+    RAM_formFactor: "SO-DIMM", RAM_slot: "Channel A · DIMM 1", RAM_speed: "3200 MT/s (1600 МГц)" } && smbios[0].RAM_voltage == $"{1350 / 1000m:0.00} В", "SMBIOS: планка разобрана, пустой слот и чужая запись пропущены");
+Check(smbios[1] is { RAM_type: "DDR5", Number: 2, size_GB: 16 }, "SMBIOS: нумерация идёт по найденным планкам, большой размер берётся из расширенного поля");
+Check(SmbiosMemory.Parse(Table(Record(17, 0x1B, b => (b[0x0C], b[0x0D], b[0x12]) = (0, 0x10, 24), "A", "B", "C", "D", "E")))[0] is { size_GB: 4, RAM_speed: ModuleMemoryModel.NoData, RAM_voltage: ModuleMemoryModel.NoData },
+    "SMBIOS: у короткой записи нет скорости и напряжения");
+Check(SmbiosMemory.Parse(Table(Record(17, 0x28, Dimm(8192, 26), "A"), [17, 0xFF, 0, 0], Record(17, 0x28, Dimm(8192, 26), "A"))).Count == 1, "SMBIOS: испорченная запись обрывает разбор");
+Check(SmbiosMemory.Read().Count >= 0, "SMBIOS: таблица этого компьютера читается");
+
+// Сопоставление с SMBIOS, как на ноутбуке с распаянной памятью: у первого модуля микросхемы SPD нет,
 // паспорт по адресу 0x50 принадлежит второму модулю — порядок адресов и слотов не совпадает.
 ModuleMemoryModel Module(string serial, string part) => new() { size_GB = 8, RAM_serialNumber = serial, RAM_partNumber = part };
 var soldered = Module("00000000", "M471A1G44BB0-CWE");

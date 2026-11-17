@@ -1,6 +1,6 @@
 namespace RAMChecker.Models
 {
-    // Характеристики одного модуля памяти: паспорт из WMI, тайминги и температура из SPD.
+    // Характеристики одного модуля памяти: паспорт из SMBIOS, тайминги и температура из SPD.
     public class ModuleMemoryModel
     {
         public const string NoData = "Нет данных";

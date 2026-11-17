@@ -20,7 +20,6 @@
         <RuntimeHostConfigurationOption Include="System.GC.ConserveMemory" Value="7" />
     </ItemGroup>
     <ItemGroup>
-        <PackageReference Include="System.Management" Version="10.0.12" />
         <!-- Подписанные модули драйвера PawnIO для шины SMBus (AMD и Intel). -->
         <EmbeddedResource Include="Drivers\*.bin" />
         <Resource Include="Assets\logo.ico" />
