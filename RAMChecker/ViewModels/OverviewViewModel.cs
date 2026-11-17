@@ -119,7 +119,7 @@ public class OverviewViewModel : ObservableObject
             reader = new SpdReader();
             var infos = reader.ReadAll();
             var pairs = Match(modules, infos, out string how);
-            SpdStatus = infos.Count == 0 ? "Паспорт SPD DDR4 не найден на шине SMBus."
+            SpdStatus = infos.Count == 0 ? "Паспорт SPD DDR4 или DDR5 не найден на шине SMBus."
                 : pairs.Count == 0 ? $"Паспорт SPD прочитан у {infos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
                 : pairs.Count < modules.Count ? $"Паспорт SPD найден у {pairs.Count} из {modules.Count} модулей."
                 : "";
