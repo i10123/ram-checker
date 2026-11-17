@@ -3,7 +3,7 @@ using System.Text;
 
 namespace RAMChecker.Services;
 
-public record SpdInfo(byte Address, int NominalSpeed, int CL, int RCD, int RP, int RAS, int RC, int SizeGB, bool HasSensor)
+public record SpdInfo(byte Address, int NominalSpeed, int CL, int RCD, int RP, int RAS, int RC, int SizeGB)
 {
     // Серийный номер и модель планки — по ним паспорт сопоставляется с модулем из SMBIOS.
     public string Serial { get; init; } = "";
@@ -13,7 +13,7 @@ public record SpdInfo(byte Address, int NominalSpeed, int CL, int RCD, int RP, i
 // Читает паспорт планок DDR4 и DDR5 из микросхемы SPD по шине SMBus (стандарт JEDEC): тайминги, модель и серийный номер.
 public sealed class SpdReader : IDisposable
 {
-    private const long Write = 0, Read = 1, Byte = 1, ByteData = 2, WordData = 3;
+    private const long Write = 0, Read = 1, Byte = 1, ByteData = 2;
     private readonly PawnIO smbus;
     // Общее имя блокировки шины, которое используют и другие программы мониторинга.
     private readonly Mutex busLock;
@@ -50,7 +50,7 @@ public sealed class SpdReader : IDisposable
         }
     }
 
-    // Адреса планок DDR5: температура у них читается из той же микросхемы, а не из отдельного датчика.
+    // Адреса планок DDR5: у них нет страниц, которые переключаются командами по адресам 0x36 и 0x37.
     private readonly HashSet<byte> ddr5 = [];
 
     public List<SpdInfo> ReadAll() => Locked(() =>
@@ -125,26 +125,6 @@ public sealed class SpdReader : IDisposable
     private bool WriteRegister(byte address, int register, int value) =>
         smbus.Execute("ioctl_smbus_xfer", [address, Write, register, ByteData, value], new long[1]);
 
-    // Температура модуля DDR4: датчик (TSOD) находится по адресу 0x18 + номер слота, регистр 5.
-    // У DDR5 датчик встроен в хаб SPD5118: регистры MR49 (младший байт) и MR50; значение лежит в битах 2–12,
-    // это 11 бит со знаком в шагах 0,25 °C.
-    public double? Temperature(byte spdAddress) => Locked<double?>(() =>
-    {
-        if (ddr5.Contains(spdAddress))
-        {
-            int low = Transfer(spdAddress, 0x31, ByteData), high = Transfer(spdAddress, 0x32, ByteData);
-            if (low < 0 || high < 0)
-                return null;
-            return Ddr5Temperature(high << 8 | low);
-        }
-        int word = Transfer(spdAddress - 0x50 + 0x18, 5, WordData);
-        if (word < 0)
-            return null;
-        // Датчик передаёт старший байт первым; значение — 13 бит со знаком в шагах 0,0625 °C.
-        int raw = ((word & 0xFF) << 8 | word >> 8) & 0x1FFF;
-        return (raw >= 0x1000 ? raw - 0x2000 : raw) / 16.0;
-    });
-
     public static SpdInfo? Decode(byte address, byte[] b)
     {
         if (b.Length < 128 || b[2] != 0x0C || Crc16(b, 126) != (b[126] | b[127] << 8))
@@ -177,7 +157,7 @@ public sealed class SpdReader : IDisposable
         // Скорости DDR4 идут с шагом 133⅓ MT/s, а tCK в паспорте округлён до пикосекунды: 0,938 нс дало бы 2132,
         // а не 2133. Поэтому скорость округляется до ближайшего шага, а дробная часть отбрасывается (2666,67 → 2666).
         int speed = (int)(Math.Round(2_000_000d / tCK * 3 / 400) * 400 / 3);
-        return new(address, speed, cl, rcd, rp, ras, rc, sizeGB, (b[14] & 0x80) != 0);
+        return new(address, speed, cl, rcd, rp, ras, rc, sizeGB);
     }
 
     // Паспорт DDR5 (стандарт JESD400-5): 1024 байта, но для таймингов достаточно первых 512. Время хранится
@@ -211,13 +191,7 @@ public sealed class SpdReader : IDisposable
         int sizeGB = gigabits[density] * subChannels * busBits / (4 << width) * ranks * dies / 8;
         // Скорости DDR5 идут с шагом 200 MT/s, а tCK в паспорте округлён до пикосекунды: 0,416 нс дало бы 4807, а не 4800.
         int speed = (int)(Math.Round(2_000_000d / tCK / 200) * 200);
-        return new(address, speed, 20 + 2 * bit, rcd, rp, ras, rc, sizeGB, (b[212] & 0x80) != 0);
-    }
-
-    public static double Ddr5Temperature(int register)
-    {
-        int value = register >> 2 & 0x7FF;
-        return (value >= 0x400 ? value - 0x800 : value) / 4.0;
+        return new(address, speed, 20 + 2 * bit, rcd, rp, ras, rc, sizeGB);
     }
 
     // Перевод времени в пикосекундах в такты по правилу округления JEDEC.

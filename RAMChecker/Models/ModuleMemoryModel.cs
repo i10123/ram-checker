@@ -1,6 +1,6 @@
 namespace RAMChecker.Models
 {
-    // Характеристики одного модуля памяти: паспорт из SMBIOS, тайминги и температура из SPD.
+    // Характеристики одного модуля памяти: паспорт из SMBIOS, тайминги из SPD.
     public class ModuleMemoryModel
     {
         public const string NoData = "Нет данных";
@@ -22,10 +22,6 @@ namespace RAMChecker.Models
         // Тайминги CL-tRCD-tRP-tRAS и tRC в тактах по паспорту SPD.
         public string RAM_timings { get; set; } = NoData;
         public string RAM_tRC { get; set; } = NoData;
-        public string RAM_temperature { get; set; } = NoData;
-
-        // Адрес SPD на шине SMBus; ноль, если паспорт не прочитан или на модуле нет датчика температуры.
-        public byte SpdAddress { get; set; }
 
         public string DisplayName => $"Модуль {Number} · {RAM_maker} {RAM_partNumber}";
     }

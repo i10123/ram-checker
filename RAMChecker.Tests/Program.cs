@@ -13,7 +13,7 @@ if (args is ["spd", var outFile])
     {
         using var reader = new SpdReader();
         foreach (var s in reader.ReadAll())
-            log.AppendLine($"{s} temp={reader.Temperature(s.Address)}");
+            log.AppendLine(s.ToString());
         log.AppendLine("done");
     }
     catch (Exception ex) { log.AppendLine(ex.ToString()); }
@@ -165,7 +165,7 @@ Check(bench is { ReadMBs: > 0, WriteMBs: > 0, CopyMBs: > 0, LatencyNs: > 0 }, $"
 // --- SPD ---
 Check(SpdReader.Crc16(Encoding.ASCII.GetBytes("123456789"), 9) == 0x31C3, "CRC16 совпадает с эталоном CRC-16/XMODEM");
 var spd = new byte[128];
-spd[2] = 0x0C; spd[14] = 0x80; spd[18] = 6;                 // DDR4, датчик есть, tCK = 0,75 нс
+spd[2] = 0x0C; spd[18] = 6;                                 // DDR4, tCK = 0,75 нс
 spd[4] = 0x05; spd[12] = 0x01; spd[13] = 0x03;              // кристаллы 8 Гбит x8, один ранг, шина 64 бита → 8 ГБ
 spd[20] = 0b1111_1000; spd[21] = 0xFF; spd[22] = 0x03;      // CL10–CL24
 spd[24] = 96; spd[25] = 108; spd[26] = 108;                 // tAA 12 нс, tRCD/tRP 13,5 нс
@@ -173,7 +173,7 @@ spd[27] = 0x10; spd[28] = 210; spd[29] = 62;                // tRAS 26,25 нс, 
 int crc = SpdReader.Crc16(spd, 126);
 spd[126] = (byte)crc; spd[127] = (byte)(crc >> 8);
 var info = SpdReader.Decode(0x50, spd);
-Check(info is { NominalSpeed: 2666, CL: 16, RCD: 18, RP: 18, RAS: 35, RC: 53, SizeGB: 8, HasSensor: true }, $"DDR4-2666 16-18-18-35, 8 ГБ: {info}");
+Check(info is { NominalSpeed: 2666, CL: 16, RCD: 18, RP: 18, RAS: 35, RC: 53, SizeGB: 8 }, $"DDR4-2666 16-18-18-35, 8 ГБ: {info}");
 spd[24] = 95; spd[123] = unchecked((byte)-125);             // 11,875 − 0,125 = 11,75 нс → 15,67 такта → CL16
 Check(SpdReader.Decode(0x50, spd) is null, "испорченная контрольная сумма отклоняется");
 crc = SpdReader.Crc16(spd, 126); spd[126] = (byte)crc; spd[127] = (byte)(crc >> 8);
@@ -233,7 +233,7 @@ Check(SmbiosMemory.Read().Count >= 0, "SMBIOS: таблица этого ком�
 
 // Паспорт DDR5-4800 40-39-39-77, 16 ГБ: кристаллы 16 Гбит x8, один ранг, два подканала по 32 бита.
 var spd5 = new byte[640];
-(spd5[2], spd5[4], spd5[6], spd5[235], spd5[212]) = (0x12, 0x04, 0x20, 0x22, 0x80);
+(spd5[2], spd5[4], spd5[6], spd5[235]) = (0x12, 0x04, 0x20, 0x22);
 (spd5[20], spd5[21], spd5[24], spd5[25]) = (0xA0, 0x01, 0xFF, 0xFF);           // tCK 416 пс, CL20–CL50
 (spd5[30], spd5[31], spd5[32], spd5[33], spd5[34], spd5[35]) = (0x80, 0x3E, 0x80, 0x3E, 0x80, 0x3E); // tAA, tRCD, tRP 16 нс
 (spd5[36], spd5[37], spd5[38], spd5[39]) = (0x00, 0x7D, 0x80, 0xBB);           // tRAS 32 нс, tRC 48 нс
@@ -246,17 +246,15 @@ byte[] Spd5(Action<byte[]> change)
     return b;
 }
 var info5 = SpdReader.DecodeDdr5(0x50, Spd5(_ => { }));
-Check(info5 is { NominalSpeed: 4800, CL: 40, RCD: 39, RP: 39, RAS: 77, RC: 116, SizeGB: 16, HasSensor: true }, $"DDR5-4800 40-39-39-77, 16 ГБ: {info5}");
+Check(info5 is { NominalSpeed: 4800, CL: 40, RCD: 39, RP: 39, RAS: 77, RC: 116, SizeGB: 16 }, $"DDR5-4800 40-39-39-77, 16 ГБ: {info5}");
 Check(SpdReader.DecodeDdr5(0x50, spd5) is null, "DDR5: испорченная контрольная сумма отклоняется");
 Check(SpdReader.DecodeDdr5(0x50, Spd5(b => b[2] = 0x0C)) is null && SpdReader.Decode(0x50, Spd5(_ => { })) is null, "DDR5 и DDR4 не принимают паспорта друг друга");
 Check(SpdReader.DecodeDdr5(0x50, Spd5(b => b[24] = b[25] = 0)) is null && SpdReader.DecodeDdr5(0x50, Spd5(b => b[20] = b[21] = 0)) is null, "DDR5: пустой список CL и нулевой tCK отклоняются");
 Check(SpdReader.DecodeDdr5(0x50, Spd5(b => (b[24], b[25], b[26], b[27], b[28]) = (1, 0, 0, 0, 0))) is null, "DDR5: расчётный CL выше списка поддерживаемых отклоняется");
 Check(SpdReader.DecodeDdr5(0x50, Spd5(b => b[4] = 0)) is null && SpdReader.DecodeDdr5(0x50, spd5[..300]) is null, "DDR5: нулевая плотность и короткий паспорт отклоняются");
-Check(SpdReader.DecodeDdr5(0x50, Spd5(b => (b[234], b[235], b[212]) = (0x08, 0x2A, 0)))?.SizeGB == 32 && SpdReader.DecodeDdr5(0x50, Spd5(b => b[212] = 0))?.HasSensor == false,
-    "DDR5: два ранга удваивают объём, байты ECC в него не входят, датчик берётся из паспорта");
+Check(SpdReader.DecodeDdr5(0x50, Spd5(b => (b[234], b[235]) = (0x08, 0x2A)))?.SizeGB == 32, "DDR5: два ранга удваивают объём, байты ECC в него не входят");
 Check(SpdReader.DecodeDdr5(0x50, Spd5(b => (b[20], b[21]) = (0x90, 0x01)))?.NominalSpeed == 5000 && SpdReader.DecodeDdr5(0x50, Spd5(b => (b[20], b[21]) = (0x43, 0x01)))?.NominalSpeed == 6200,
     "DDR5: скорость округляется до шага 200 MT/s");
-Check(SpdReader.Ddr5Temperature(0x0190) == 25 && SpdReader.Ddr5Temperature(0x1F60) == -10 && SpdReader.Ddr5Temperature(0x0003) == 0, "DDR5: температура хаба SPD5118 — 25 °C и −10 °C, неиспользуемые биты игнорируются");
 
 // Сопоставление с SMBIOS, как на ноутбуке с распаянной памятью: у первого модуля микросхемы SPD нет,
 // паспорт по адресу 0x50 принадлежит второму модулю — порядок адресов и слотов не совпадает.

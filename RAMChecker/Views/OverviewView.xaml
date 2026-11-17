@@ -11,7 +11,7 @@
                     <Button DockPanel.Dock="Right" Content="Перезапустить от администратора" Command="{Binding AdministratorCommand}"
                             Style="{DynamicResource AccentButtonStyle}" VerticalAlignment="Center" />
                     <StackPanel VerticalAlignment="Center">
-                        <TextBlock Text="Тайминги и температура недоступны" FontWeight="SemiBold" />
+                        <TextBlock Text="Тайминги недоступны" FontWeight="SemiBold" />
                         <TextBlock Text="Для чтения паспорта SPD нужны права администратора." Style="{StaticResource Caption}" />
                     </StackPanel>
                 </DockPanel>

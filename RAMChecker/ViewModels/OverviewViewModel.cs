@@ -16,8 +16,6 @@ public class OverviewViewModel : ObservableObject
 {
     private readonly MainViewModel main;
     private readonly Queue<double> samples = new();
-    private SpdReader? spd;
-    private Task? temperatureTask;
 
     public ObservableCollection<ModuleMemoryModel> ModulesMemory { get; } = [];
     public MemorySnapshot? Memory { get; private set; }
@@ -70,7 +68,7 @@ public class OverviewViewModel : ObservableObject
         new("Тип", $"{m.RAM_type} {m.RAM_formFactor}"), new("Объём", $"{m.size_GB} ГБ"), new("Слот", m.RAM_slot),
         new("Текущая частота", m.RAM_speed), new("Номинальная частота", m.RAM_nominalSpeed),
         new("Тайминги CL-tRCD-tRP-tRAS", m.RAM_timings), new("tRC", m.RAM_tRC),
-        new("Напряжение", m.RAM_voltage), new("Температура", m.RAM_temperature)
+        new("Напряжение", m.RAM_voltage)
     ];
 
     public async Task LoadModulesAsync()
@@ -78,12 +76,11 @@ public class OverviewViewModel : ObservableObject
         try
         {
             var modules = await Task.Run(SmbiosMemory.Read);
-            var reader = NeedsAdministrator ? null : await Task.Run(() => ReadSpd(modules));
+            if (!NeedsAdministrator)
+                await Task.Run(() => ReadSpd(modules));
             foreach (var m in modules)
                 ModulesMemory.Add(m);
             SelectedModule = ModulesMemory.FirstOrDefault();
-            // Чтение температуры начнётся только теперь, когда список модулей заполнен.
-            spd = reader;
         }
         catch (Exception ex) { main.Notice = "Не удалось получить сведения о модулях: " + ex.Message; }
         Loading = false;
@@ -110,13 +107,12 @@ public class OverviewViewModel : ObservableObject
         return pairs;
     }
 
-    // Возвращает драйвер для чтения температуры или null, если шина SMBus недоступна.
-    private SpdReader? ReadSpd(List<ModuleMemoryModel> modules)
+    // Паспорт читается один раз: после чтения драйвер освобождается. Без сопоставления модули остаются без таймингов.
+    private void ReadSpd(List<ModuleMemoryModel> modules)
     {
-        SpdReader? reader = null;
         try
         {
-            reader = new SpdReader();
+            using var reader = new SpdReader();
             var infos = reader.ReadAll();
             var pairs = Match(modules, infos, out string how);
             SpdStatus = infos.Count == 0 ? "Паспорт SPD DDR4 или DDR5 не найден на шине SMBus."
@@ -124,26 +120,15 @@ public class OverviewViewModel : ObservableObject
                 : pairs.Count < modules.Count ? $"Паспорт SPD найден у {pairs.Count} из {modules.Count} модулей."
                 : how.Contains("предположительно") ? "Планки одинакового объёма: тайминги отнесены к слотам предположительно."
                 : "";
-            // Без сопоставления драйвер не нужен: адреса датчиков температуры модулям не присвоены.
-            if (pairs.Count > 0)
+            foreach (var (m, info) in pairs)
             {
-                foreach (var (m, info) in pairs)
-                {
-                    m.SpdAddress = info.Address;
-                    m.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
-                    m.RAM_timings = $"{info.CL}-{info.RCD}-{info.RP}-{info.RAS}";
-                    m.RAM_tRC = info.RC.ToString();
-                    // Датчик температуры есть не на всех планках: о нём сообщает байт 14 паспорта SPD.
-                    if (!info.HasSensor)
-                        (m.SpdAddress, m.RAM_temperature) = (0, "Датчика на модуле нет");
-                }
-                return reader;
+                m.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
+                m.RAM_timings = $"{info.CL}-{info.RCD}-{info.RP}-{info.RAS}";
+                m.RAM_tRC = info.RC.ToString();
             }
         }
-        catch (DllNotFoundException) { SpdStatus = "Для таймингов и температуры установите драйвер PawnIO."; }
+        catch (DllNotFoundException) { SpdStatus = "Для таймингов установите драйвер PawnIO."; }
         catch (Exception ex) { SpdStatus = "Шина SMBus недоступна: " + ex.Message; }
-        reader?.Dispose();
-        return null;
     }
 
     public void Tick()
@@ -160,32 +145,7 @@ public class OverviewViewModel : ObservableObject
                 UpdateChart();
         }
         catch (Exception ex) { main.Notice = "Мониторинг недоступен: " + ex.Message; }
-        if (spd is not null && temperatureTask is not { IsCompleted: false })
-            temperatureTask = ReadTemperatureAsync(spd);
         Changed(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText), nameof(CommitText), nameof(CommitUsed), nameof(CommitFree));
-    }
-
-    // Шина SMBus медленная, поэтому температура читается в фоне, а в модули записывается уже в потоке интерфейса:
-    // экран не застаёт модули посреди изменения и обновляется сразу, как только значения готовы.
-    private async Task ReadTemperatureAsync(SpdReader reader)
-    {
-        var modules = ModulesMemory.Where(m => m.SpdAddress != 0).ToArray();
-        double?[] values;
-        try
-        {
-            values = await Task.Run(() => modules.Select(m => reader.Temperature(m.SpdAddress)).ToArray());
-        }
-        catch (Exception) { values = new double?[modules.Length]; } // Сбой шины — температура неизвестна.
-        // Таблица модуля перестраивается, только если температура на экране действительно изменилась.
-        bool changed = false;
-        for (int i = 0; i < modules.Length; i++)
-        {
-            string text = values[i] is double t ? $"{t:0.0} °C" : ModuleMemoryModel.NoData;
-            changed |= text != modules[i].RAM_temperature;
-            modules[i].RAM_temperature = text;
-        }
-        if (changed)
-            Changed(nameof(ModuleRows));
     }
 
     // График последних 60 измерений в области 600 × 160; заливка замыкается по нижнему краю.
@@ -244,13 +204,5 @@ public class OverviewViewModel : ObservableObject
             Application.Current.MainWindow.Close();
         }
         catch (Exception) { } // Пользователь отменил запрос UAC — продолжаем без прав администратора.
-    }
-
-    // Закрытие ждёт чтение температуры, иначе фоновый поток обратился бы к уже освобождённому драйверу.
-    public async Task ShutdownAsync()
-    {
-        if (temperatureTask is not null)
-            await temperatureTask;
-        spd?.Dispose();
     }
 }
