@@ -68,7 +68,7 @@ public class OverviewViewModel : ObservableObject
     [
         new("Производитель", m.RAM_maker), new("Модель", m.RAM_partNumber), new("Серийный номер", m.RAM_serialNumber),
         new("Тип", $"{m.RAM_type} {m.RAM_formFactor}"), new("Объём", $"{m.size_GB} ГБ"), new("Слот", m.RAM_slot),
-        new("Текущая частота", m.RAM_speed), new("Паспорт SPD", m.RAM_spd), new("Номинальная частота", m.RAM_nominalSpeed),
+        new("Текущая частота", m.RAM_speed), new("Номинальная частота", m.RAM_nominalSpeed),
         new("Тайминги CL-tRCD-tRP-tRAS", m.RAM_timings), new("tRC", m.RAM_tRC),
         new("Напряжение", m.RAM_voltage), new("Температура", m.RAM_temperature)
     ];
@@ -122,6 +122,7 @@ public class OverviewViewModel : ObservableObject
             SpdStatus = infos.Count == 0 ? "Паспорт SPD DDR4 или DDR5 не найден на шине SMBus."
                 : pairs.Count == 0 ? $"Паспорт SPD прочитан у {infos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
                 : pairs.Count < modules.Count ? $"Паспорт SPD найден у {pairs.Count} из {modules.Count} модулей."
+                : how.Contains("предположительно") ? "Планки одинакового объёма: тайминги отнесены к слотам предположительно."
                 : "";
             // Без сопоставления драйвер не нужен: адреса датчиков температуры модулям не присвоены.
             if (pairs.Count > 0)
@@ -129,7 +130,6 @@ public class OverviewViewModel : ObservableObject
                 foreach (var (m, info) in pairs)
                 {
                     m.SpdAddress = info.Address;
-                    m.RAM_spd = $"адрес 0x{info.Address:X2} · {how}";
                     m.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
                     m.RAM_timings = $"{info.CL}-{info.RCD}-{info.RP}-{info.RAS}";
                     m.RAM_tRC = info.RC.ToString();
