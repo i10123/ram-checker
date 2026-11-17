@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+    <PropertyGroup>
+        <TargetFramework>net10.0</TargetFramework>
+        <Nullable>enable</Nullable>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <RootNamespace>RAMChecker</RootNamespace>
+        <!-- Вызовы Win32 и драйвера генерируются через LibraryImport и требуют unsafe-кода. -->
+        <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    </PropertyGroup>
+    <ItemGroup>
+        <!-- Подписанные модули драйвера PawnIO для шины SMBus (AMD и Intel). -->
+        <EmbeddedResource Include="Drivers\*.bin" />
+    </ItemGroup>
+</Project>

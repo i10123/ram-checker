@@ -87,26 +87,6 @@ public class OverviewViewModel : ObservableObject
         Changed(); // Изменились сразу список модулей, состояние загрузки и строка о чтении SPD.
     }
 
-    // Пары «модуль из SMBIOS — паспорт SPD». Надёжный признак планки — серийный номер и модель из второй страницы SPD:
-    // пара принимается, если они совпали ровно у одного модуля и одного паспорта. Распаянная на плате память
-    // микросхемы SPD не имеет, такой модуль остаётся без пары. Если по номеру не нашлось ни одной пары (номер не
-    // прочитан или BIOS записал его в SMBIOS иначе), паспорта сопоставляются по порядку (адреса SPD 0x50, 0x51… и список
-    // SMBIOS обычно идут от первого слота), но только если число модулей и объём каждого совпадают. Если объёмы всех
-    // планок разные, совпадение объёма подтверждает пару; если есть одинаковые, их можно перепутать.
-    public static List<(ModuleMemoryModel Module, SpdInfo Info)> Match(List<ModuleMemoryModel> modules, List<SpdInfo> infos, out string how)
-    {
-        bool Same(ModuleMemoryModel m, SpdInfo i) => i.Serial == m.RAM_serialNumber && i.Part == m.RAM_partNumber;
-        List<(ModuleMemoryModel, SpdInfo)> pairs = [.. from m in modules from i in infos
-            where Same(m, i) && infos.Count(j => Same(m, j)) == 1 && modules.Count(n => Same(n, i)) == 1 select (m, i)];
-        how = "совпали серийный номер и модель";
-        if (pairs.Count == 0 && infos.Count == modules.Count && modules.Zip(infos).All(p => p.First.size_GB == p.Second.SizeGB))
-        {
-            pairs = [.. modules.Zip(infos)];
-            how = modules.Select(m => m.size_GB).Distinct().Count() < modules.Count ? "отнесён по порядку слотов, предположительно" : "по порядку слотов";
-        }
-        return pairs;
-    }
-
     // Паспорт читается один раз: после чтения драйвер освобождается. Без сопоставления модули остаются без таймингов.
     private void ReadSpd(List<ModuleMemoryModel> modules)
     {
@@ -114,7 +94,7 @@ public class OverviewViewModel : ObservableObject
         {
             using var reader = new SpdReader();
             var infos = reader.ReadAll();
-            var pairs = Match(modules, infos, out string how);
+            var pairs = SpdMatcher.Match(modules, infos, out string how);
             SpdStatus = infos.Count == 0 ? "Паспорт SPD DDR4 или DDR5 не найден на шине SMBus."
                 : pairs.Count == 0 ? $"Паспорт SPD прочитан у {infos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
                 : pairs.Count < modules.Count ? $"Паспорт SPD найден у {pairs.Count} из {modules.Count} модулей."
