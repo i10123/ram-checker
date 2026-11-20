@@ -5,9 +5,6 @@
         xmlns:v="clr-namespace:RAMChecker.Views"
         Title="MemScope" Icon="Assets/logo.ico" Width="1280" Height="820" MinWidth="1000" MinHeight="640"
         WindowStartupLocation="CenterScreen" Loaded="Window_Loaded" Closing="Window_Closing" Activated="Window_Activated">
-    <Window.Resources>
-        <ResourceDictionary Source="Assets/Logo.xaml" />
-    </Window.Resources>
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
@@ -22,14 +19,7 @@
         </Grid.ColumnDefinitions>
 
         <!-- Боковое меню разделов. -->
-        <DockPanel Margin="12,20,12,12">
-            <DockPanel DockPanel.Dock="Top" Margin="12,0,0,24">
-                <Image Source="{StaticResource Logo}" Width="40" Height="40" Margin="0,0,12,0" />
-                <StackPanel VerticalAlignment="Center">
-                    <TextBlock Text="MemScope" FontSize="20" FontWeight="SemiBold" />
-                    <TextBlock Text="Диагностика памяти" Style="{StaticResource Caption}" />
-                </StackPanel>
-            </DockPanel>
+        <DockPanel Margin="12,24,12,12">
             <ListBox ItemsSource="{Binding Navigation}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" />
         </DockPanel>
 
