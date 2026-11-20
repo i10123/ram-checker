@@ -11,16 +11,16 @@ public static class SpdMatcher
     // прочитан или BIOS записал его в SMBIOS иначе), паспорта сопоставляются по порядку (адреса SPD 0x50, 0x51… и список
     // SMBIOS обычно идут от первого слота), но только если число модулей и объём каждого совпадают. Если объёмы всех
     // планок разные, совпадение объёма подтверждает пару; если есть одинаковые, их можно перепутать.
-    public static List<(ModuleMemoryModel Module, SpdInfo Info)> Match(List<ModuleMemoryModel> modules, List<SpdInfo> infos, out string how)
+    public static List<(ModuleMemoryModel Module, SpdInfo Info)> Match(List<ModuleMemoryModel> modules, List<SpdInfo> infos, out string matchMethod)
     {
-        bool Same(ModuleMemoryModel m, SpdInfo i) => i.Serial == m.RAM_serialNumber && i.Part == m.RAM_partNumber;
-        List<(ModuleMemoryModel, SpdInfo)> pairs = [.. from m in modules from i in infos
-            where Same(m, i) && infos.Count(j => Same(m, j)) == 1 && modules.Count(n => Same(n, i)) == 1 select (m, i)];
-        how = "совпали серийный номер и модель";
-        if (pairs.Count == 0 && infos.Count == modules.Count && modules.Zip(infos).All(p => p.First.size_GB == p.Second.SizeGB))
+        bool IsSameModule(ModuleMemoryModel module, SpdInfo info) => info.SerialNumber == module.RAM_serialNumber && info.PartNumber == module.RAM_partNumber;
+        List<(ModuleMemoryModel, SpdInfo)> pairs = [.. from module in modules from info in infos
+            where IsSameModule(module, info) && infos.Count(otherInfo => IsSameModule(module, otherInfo)) == 1 && modules.Count(otherModule => IsSameModule(otherModule, info)) == 1 select (module, info)];
+        matchMethod = "совпали серийный номер и модель";
+        if (pairs.Count == 0 && infos.Count == modules.Count && modules.Zip(infos).All(pair => pair.First.size_GB == pair.Second.SizeGB))
         {
             pairs = [.. modules.Zip(infos)];
-            how = modules.Select(m => m.size_GB).Distinct().Count() < modules.Count ? "отнесён по порядку слотов, предположительно" : "по порядку слотов";
+            matchMethod = modules.Select(module => module.size_GB).Distinct().Count() < modules.Count ? "отнесён по порядку слотов, предположительно" : "по порядку слотов";
         }
         return pairs;
     }

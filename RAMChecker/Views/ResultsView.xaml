@@ -58,6 +58,9 @@
                     <TextBlock Text="{Binding Description}" Style="{StaticResource Caption}" Margin="0,4,0,12" />
                     <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" />
                     <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding Configuration}" Style="{StaticResource Caption}" Margin="0,8,0,0" />
+                    <TextBlock Text="{Binding DataContext.Suspect, RelativeSource={RelativeSource AncestorType=UserControl}}" FontWeight="SemiBold"
+                               TextWrapping="Wrap" Margin="0,8,0,0" />
                     <ItemsControl ItemsSource="{Binding Cells}" Style="{StaticResource MemoryMap}" Margin="0,16" />
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
                         <Button Content="Сохранить отчёт" Click="Export_Click" Style="{DynamicResource AccentButtonStyle}" />

@@ -1,5 +1,6 @@
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.Diagnostics.Eventing.Reader;
 using System.Security.Principal;
 using System.Windows;
 using System.Windows.Media;
@@ -15,7 +16,8 @@ public record BarItem(string Name, string Value, double Width);
 public class OverviewViewModel : ObservableObject
 {
     private readonly MainViewModel main;
-    private readonly Queue<double> samples = new();
+    private readonly Queue<double> loadSamples = new();
+    private string wheaErrors = "…";
 
     public ObservableCollection<ModuleMemoryModel> ModulesMemory { get; } = [];
     public MemorySnapshot? Memory { get; private set; }
@@ -32,12 +34,12 @@ public class OverviewViewModel : ObservableObject
     public RelayCommand AdministratorCommand { get; }
 
     public string TotalText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Total);
-    public string UsedText => Memory is null ? "—" : $"{MemorySnapshot.Format(Memory.Used)} · {Memory.Load:0}%";
-    public string LoadText => Memory is null ? "—" : $"{Memory.Load:0}%";
+    public string UsedText => Memory is null ? "—" : $"{MemorySnapshot.Format(Memory.Used)} · {Memory.LoadPercent:0}%";
+    public string LoadText => Memory is null ? "—" : $"{Memory.LoadPercent:0}%";
     // Выделенная программам память (commit) вместе с файлом подкачки.
-    public string CommitText => Memory is { Committed: ulong c, CommitLimit: ulong l } ? $"{MemorySnapshot.Format(c)} из {MemorySnapshot.Format(l)}" : "—";
+    public string CommitText => Memory is { Committed: ulong committedBytes, CommitLimit: ulong commitLimitBytes } ? $"{MemorySnapshot.Format(committedBytes)} из {MemorySnapshot.Format(commitLimitBytes)}" : "—";
     public GridLength CommitUsed => new(Memory?.Committed ?? 0, GridUnitType.Star);
-    public GridLength CommitFree => new(Memory is { Committed: ulong c, CommitLimit: ulong l } && l > c ? l - c : 1, GridUnitType.Star);
+    public GridLength CommitFree => new(Memory is { Committed: ulong committedBytes, CommitLimit: ulong commitLimitBytes } && commitLimitBytes > committedBytes ? commitLimitBytes - committedBytes : 1, GridUnitType.Star);
     public List<KeyValuePair<string, string>> MemoryRows { get; private set; } = [];
     public string AvailableText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Available);
     // Пока SMBIOS и SPD читаются в фоне, вместо пустого списка показывается состояние загрузки.
@@ -57,18 +59,18 @@ public class OverviewViewModel : ObservableObject
         set
         {
             field = value;
-            Changed();
+            NotifyChanged();
         }
     }
 
     // Строки паспорта выбранного модуля для таблицы «характеристика — значение».
-    public List<KeyValuePair<string, string>> ModuleRows => SelectedModule is not { } m ? [] :
+    public List<KeyValuePair<string, string>> ModuleRows => SelectedModule is not { } module ? [] :
     [
-        new("Производитель", m.RAM_maker), new("Модель", m.RAM_partNumber), new("Серийный номер", m.RAM_serialNumber),
-        new("Тип", $"{m.RAM_type} {m.RAM_formFactor}"), new("Объём", $"{m.size_GB} ГБ"), new("Слот", m.RAM_slot),
-        new("Текущая частота", m.RAM_speed), new("Номинальная частота", m.RAM_nominalSpeed),
-        new("Тайминги CL-tRCD-tRP-tRAS", m.RAM_timings), new("tRC", m.RAM_tRC),
-        new("Напряжение", m.RAM_voltage)
+        new("Производитель", module.RAM_maker), new("Модель", module.RAM_partNumber), new("Серийный номер", module.RAM_serialNumber),
+        new("Тип", $"{module.RAM_type} {module.RAM_formFactor}"), new("Объём", $"{module.size_GB} ГБ"), new("Слот", module.RAM_slot),
+        new("Текущая частота", module.RAM_speed), new("Номинальная частота", module.RAM_nominalSpeed),
+        new("Тайминги CL-tRCD-tRP-tRAS", module.RAM_timings), new("tRC", module.RAM_tRC),
+        new("Напряжение", module.RAM_voltage)
     ];
 
     public async Task LoadModulesAsync()
@@ -78,13 +80,14 @@ public class OverviewViewModel : ObservableObject
             var modules = await Task.Run(SmbiosMemory.Read);
             if (!NeedsAdministrator)
                 await Task.Run(() => ReadSpd(modules));
-            foreach (var m in modules)
-                ModulesMemory.Add(m);
+            foreach (var module in modules)
+                ModulesMemory.Add(module);
             SelectedModule = ModulesMemory.FirstOrDefault();
         }
         catch (Exception ex) { main.Notice = "Не удалось получить сведения о модулях: " + ex.Message; }
         Loading = false;
-        Changed(); // Изменились сразу список модулей, состояние загрузки и строка о чтении SPD.
+        NotifyChanged(); // Изменились сразу список модулей, состояние загрузки и строка о чтении SPD.
+        await ReadWheaAsync(); // Строка журнала появится в таблице на ближайшем обновлении мониторинга.
     }
 
     // Паспорт читается один раз: после чтения драйвер освобождается. Без сопоставления модули остаются без таймингов.
@@ -93,22 +96,45 @@ public class OverviewViewModel : ObservableObject
         try
         {
             using var reader = new SpdReader();
-            var infos = reader.ReadAll();
-            var pairs = SpdMatcher.Match(modules, infos, out string how);
-            SpdStatus = infos.Count == 0 ? "Паспорт SPD DDR4 или DDR5 не найден на шине SMBus."
-                : pairs.Count == 0 ? $"Паспорт SPD прочитан у {infos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
+            var spdInfos = reader.ReadAll();
+            var pairs = SpdMatcher.Match(modules, spdInfos, out string matchMethod);
+            SpdStatus = spdInfos.Count == 0 ? "Паспорт SPD DDR4 или DDR5 не найден на шине SMBus."
+                : pairs.Count == 0 ? $"Паспорт SPD прочитан у {spdInfos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
                 : pairs.Count < modules.Count ? $"Паспорт SPD найден у {pairs.Count} из {modules.Count} модулей."
-                : how.Contains("предположительно") ? "Планки одинакового объёма: тайминги отнесены к слотам предположительно."
+                : matchMethod.Contains("предположительно") ? "Планки одинакового объёма: тайминги отнесены к слотам предположительно."
                 : "";
-            foreach (var (m, info) in pairs)
+            foreach (var (module, info) in pairs)
             {
-                m.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
-                m.RAM_timings = $"{info.CL}-{info.RCD}-{info.RP}-{info.RAS}";
-                m.RAM_tRC = info.RC.ToString();
+                module.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
+                module.RAM_timings = $"{info.CasLatency}-{info.RasToCasDelay}-{info.RowPrecharge}-{info.RowActiveTime}";
+                module.RAM_tRC = info.RowCycleTime.ToString();
             }
         }
         catch (DllNotFoundException) { SpdStatus = "Для таймингов установите драйвер PawnIO."; }
         catch (Exception ex) { SpdStatus = "Шина SMBus недоступна: " + ex.Message; }
+    }
+
+    // Исправленные ошибки, которые сам процессор нашёл во всей памяти, а не только в буфере проверки.
+    // Windows записывает их в журнал System от источника WHEA-Logger с кодом 47 (ошибка памяти).
+    public async Task ReadWheaAsync() => wheaErrors = await Task.Run(ReadWhea);
+
+    private static string ReadWhea()
+    {
+        try
+        {
+            using var reader = new EventLogReader(new EventLogQuery("System", PathType.LogName,
+                "*[System[Provider[@Name='Microsoft-Windows-WHEA-Logger'] and EventID=47]]") { ReverseDirection = true });
+            int eventCount = 0;
+            DateTime? lastEventTime = null;
+            for (var eventRecord = reader.ReadEvent(); eventRecord is not null; eventRecord = reader.ReadEvent())
+                using (eventRecord)
+                {
+                    lastEventTime ??= eventRecord.TimeCreated;
+                    eventCount++;
+                }
+            return eventCount == 0 ? "Нет" : $"{eventCount}, последняя {lastEventTime:dd.MM.yyyy HH:mm}";
+        }
+        catch (Exception) { return ModuleMemoryModel.NoData; }
     }
 
     public void Tick()
@@ -116,63 +142,64 @@ public class OverviewViewModel : ObservableObject
         try
         {
             Memory = MemoryMonitor.Read();
-            samples.Enqueue(Memory.Load);
-            if (samples.Count > 60)
-                samples.Dequeue();
+            loadSamples.Enqueue(Memory.LoadPercent);
+            if (loadSamples.Count > 60)
+                loadSamples.Dequeue();
             UpdateMemoryRows(Memory);
             // График виден только на странице теста — на других страницах его не пересчитываем.
             if (main.SelectedPage == 1)
                 UpdateChart();
         }
         catch (Exception ex) { main.Notice = "Мониторинг недоступен: " + ex.Message; }
-        Changed(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText), nameof(CommitText), nameof(CommitUsed), nameof(CommitFree));
+        NotifyChanged(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText), nameof(CommitText), nameof(CommitUsed), nameof(CommitFree));
     }
 
     // График последних 60 измерений в области 600 × 160; заливка замыкается по нижнему краю.
     public void UpdateChart()
     {
-        if (samples.Count == 0)
+        if (loadSamples.Count == 0)
             return;
-        var line = samples.Select((load, i) => new Point((60 - samples.Count + i) * 600 / 59d, 160 - load * 1.6)).ToList();
-        UsagePoints = new PointCollection(line);
-        UsageArea = new PointCollection(line.Append(new(600, 160)).Append(new(line[0].X, 160)));
+        var chartPoints = loadSamples.Select((loadPercent, sampleIndex) => new Point((60 - loadSamples.Count + sampleIndex) * 600 / 59d, 160 - loadPercent * 1.6)).ToList();
+        UsagePoints = new PointCollection(chartPoints);
+        UsageArea = new PointCollection(chartPoints.Append(new(600, 160)).Append(new(chartPoints[0].X, 160)));
         UsagePoints.Freeze();
         UsageArea.Freeze();
-        Changed(nameof(UsagePoints), nameof(UsageArea));
+        NotifyChanged(nameof(UsagePoints), nameof(UsageArea));
     }
 
     // Строки пересоздаются, только когда меняется хотя бы одно значение, — экран не перестраивается каждую секунду.
-    private void UpdateMemoryRows(MemorySnapshot m)
+    private void UpdateMemoryRows(MemorySnapshot snapshot)
     {
         List<KeyValuePair<string, string>> rows =
         [
-            new("Системный кэш", m.Cache is ulong cache ? MemorySnapshot.Format(cache) : ModuleMemoryModel.NoData),
-            new("Файл подкачки", m.CommitLimit is ulong l && l > m.Total ? MemorySnapshot.Format(l - m.Total) : "Нет"),
-            new("Доступно для проверки", MemorySnapshot.Format((ulong)MemorySnapshot.SafeTestBytes(m)))
+            new("Системный кэш", snapshot.Cache is ulong cache ? MemorySnapshot.Format(cache) : ModuleMemoryModel.NoData),
+            new("Файл подкачки", snapshot.CommitLimit is ulong commitLimitBytes && commitLimitBytes > snapshot.Total ? MemorySnapshot.Format(commitLimitBytes - snapshot.Total) : "Нет"),
+            new("Доступно для проверки", MemorySnapshot.Format((ulong)MemorySnapshot.SafeTestBytes(snapshot))),
+            new("Ошибки памяти в журнале Windows", wheaErrors)
         ];
         if (rows.SequenceEqual(MemoryRows))
             return;
         MemoryRows = rows;
-        Changed(nameof(MemoryRows));
+        NotifyChanged(nameof(MemoryRows));
     }
 
     private async Task BenchmarkAsync()
     {
         BenchmarkRunning = true;
         BenchmarkText = "Идёт замер…";
-        Changed();
+        NotifyChanged();
         try
         {
-            var r = await MemoryBenchmark.RunAsync();
-            double max = Math.Max(r.ReadMBs, Math.Max(r.WriteMBs, r.CopyMBs));
-            BenchmarkBars = [.. new[] { ("Чтение", r.ReadMBs), ("Запись", r.WriteMBs), ("Копирование", r.CopyMBs) }
-                .Select(b => new BarItem(b.Item1, $"{b.Item2:N0} МБ/с", b.Item2 / max * 200))];
-            BenchmarkText = $"Задержка: {r.LatencyNs:0.0} нс";
+            var benchmark = await MemoryBenchmark.RunAsync();
+            double bestSpeed = Math.Max(benchmark.ReadMegabytesPerSecond, Math.Max(benchmark.WriteMegabytesPerSecond, benchmark.CopyMegabytesPerSecond));
+            BenchmarkBars = [.. new[] { ("Чтение", benchmark.ReadMegabytesPerSecond), ("Запись", benchmark.WriteMegabytesPerSecond), ("Копирование", benchmark.CopyMegabytesPerSecond) }
+                .Select(bar => new BarItem(bar.Item1, $"{bar.Item2:N0} МБ/с", bar.Item2 / bestSpeed * 200))];
+            BenchmarkText = $"Задержка: {benchmark.LatencyNanoseconds:0.0} нс";
         }
         catch (Exception ex) { BenchmarkText = "Замер не выполнен: " + ex.Message; }
         MemoryMonitor.ReturnFreeMemory(); // Буферы замера больше не нужны.
         BenchmarkRunning = false;
-        Changed();
+        NotifyChanged();
     }
 
     private void RestartAsAdministrator()

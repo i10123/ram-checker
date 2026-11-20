@@ -23,7 +23,7 @@ public partial class ResultsView : UserControl
             return;
         try
         {
-            File.WriteAllText(dialog.FileName, ReportExporter.Html(result), new UTF8Encoding(true));
+            File.WriteAllText(dialog.FileName, ReportExporter.CreateHtml(result), new UTF8Encoding(true));
             Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
         }
         catch (Exception ex) { MessageBox.Show(ex.Message, "Не удалось сохранить отчёт", MessageBoxButton.OK, MessageBoxImage.Error); }

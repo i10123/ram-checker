@@ -7,26 +7,26 @@ namespace RAMChecker
     // Код окна: запуск модели при открытии и корректная остановка проверки при закрытии.
     public partial class MainWindow : Window
     {
-        private bool closing, closeAllowed;
+        private bool closingStarted, closeAllowed;
 
         public MainWindow() => InitializeComponent();
 
         private MainViewModel ViewModel => (MainViewModel)DataContext;
 
-        private async void Window_Loaded(object sender, RoutedEventArgs e) => await ViewModel.InitializeAsync();
+        private async void Window_Loaded(object sender, RoutedEventArgs eventArgs) => await ViewModel.InitializeAsync();
 
-        private void Window_Activated(object? sender, EventArgs e) => ViewModel.Test.WindowActivated();
+        private void Window_Activated(object? sender, EventArgs eventArgs) => ViewModel.Test.WindowActivated();
 
         // Закрытие откладывается, пока фоновая проверка не завершится и не сохранит результат.
-        private async void Window_Closing(object? sender, CancelEventArgs e)
+        private async void Window_Closing(object? sender, CancelEventArgs eventArgs)
         {
             if (closeAllowed)
                 return;
-            e.Cancel = true;
+            eventArgs.Cancel = true;
             // Крестик в заголовке работает и у отключённого окна: повторное нажатие не должно завершать работу второй раз.
-            if (closing)
+            if (closingStarted)
                 return;
-            closing = true;
+            closingStarted = true;
             IsEnabled = false;
             try
             {

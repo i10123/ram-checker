@@ -25,6 +25,21 @@ public class MainViewModel : ObservableObject
     public bool HasNoHistory => History.Count == 0;
     public RelayCommand DeleteResultCommand { get; }
 
+    // Вывод по истории: модули, которые стояли во всех проверках с ошибками и ни в одной завершённой проверке без ошибок.
+    // Если проверять планки по одной, программа сама показывает, с какой из них появляются ошибки.
+    public string Suspect
+    {
+        get
+        {
+            var modulesInRunsWithErrors = History.Where(historyItem => historyItem.HasErrors && historyItem.Modules.Count > 0).Select(historyItem => historyItem.Modules).ToList();
+            var modulesInCleanRuns = History.Where(historyItem => historyItem is { Status: DiagnosticStatus.Completed, HasErrors: false }).SelectMany(historyItem => historyItem.Modules).ToHashSet();
+            if (modulesInRunsWithErrors.Count == 0 || modulesInCleanRuns.Count == 0)
+                return "";
+            var suspectModules = modulesInRunsWithErrors.Aggregate((commonModules, nextModules) => [.. commonModules.Intersect(nextModules)]).Except(modulesInCleanRuns).ToList();
+            return suspectModules.Count == 0 ? "" : "Ошибки находились только с модулем: " + string.Join("; ", suspectModules);
+        }
+    }
+
     public MainViewModel()
     {
         Overview = new(this);
@@ -45,7 +60,7 @@ public class MainViewModel : ObservableObject
             // Щелчок с Ctrl снимает выделение в меню (индекс -1) — тогда остаётся прежняя страница.
             if (value >= 0)
                 field = value;
-            Changed();
+            NotifyChanged();
             if (field == 1)
                 Overview.UpdateChart(); // График не пересчитывался, пока страница теста была скрыта.
         }
@@ -57,7 +72,7 @@ public class MainViewModel : ObservableObject
         set
         {
             field = value;
-            Changed();
+            NotifyChanged();
         }
     } = "";
 
@@ -67,7 +82,7 @@ public class MainViewModel : ObservableObject
         set
         {
             field = value;
-            Changed();
+            NotifyChanged();
         }
     }
 
@@ -75,9 +90,9 @@ public class MainViewModel : ObservableObject
     {
         try
         {
-            var items = storage.ReadHistory(out int skipped);
-            foreach (var r in items.OrderByDescending(r => r.Started))
-                History.Add(r);
+            var loadedItems = storage.ReadHistory(out int skipped);
+            foreach (var historyItem in loadedItems.OrderByDescending(historyItem => historyItem.Started))
+                History.Add(historyItem);
             if (skipped != 0)
                 Notice = (skipped > 0 ? $"Пропущено повреждённых записей истории: {skipped}." : "Файл истории повреждён, история начата заново.")
                     + " Исходный файл сохранён как history.bad.json.";
@@ -114,6 +129,8 @@ public class MainViewModel : ObservableObject
     // История сохраняется всегда: после каждого изменения и раз в 10 секунд во время проверки.
     public void SaveHistory()
     {
+        // Нужен для автосохранения во время проверки: остальные изменения истории и так обновляют все привязки.
+        NotifyChanged(nameof(Suspect));
         if (!historyWritable)
             return;
         try

@@ -15,7 +15,7 @@ namespace RAMChecker.Models
         public string RAM_slot { get; set; } = NoData;
         public string RAM_voltage { get; set; } = NoData;
 
-        // Текущая скорость из настроек Windows и номинальная из SPD, в MT/s.
+        // Настроенная в BIOS скорость из SMBIOS и номинальная из SPD, в MT/s.
         public string RAM_speed { get; set; } = NoData;
         public string RAM_nominalSpeed { get; set; } = NoData;
 

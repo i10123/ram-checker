@@ -28,7 +28,7 @@ public record MemoryError(long Offset, uint Expected, uint Actual, string Stage,
 // Клетка карты памяти: состояние блока буфера и подсказка с его диапазоном адресов.
 public record MemoryCell(int Index, byte State, long BlockBytes)
 {
-    public string Tip => $"Блок {Index + 1} · 0x{Index * BlockBytes:X9}–0x{(Index + 1) * BlockBytes - 1:X9} · " + State switch
+    public string TooltipText => $"Блок {Index + 1} · 0x{Index * BlockBytes:X9}–0x{(Index + 1) * BlockBytes - 1:X9} · " + State switch
     {
         MemoryDiagnosticService.Error => "найдены ошибки",
         MemoryDiagnosticService.NotChecked => "ещё не проверен",
@@ -36,7 +36,7 @@ public record MemoryCell(int Index, byte State, long BlockBytes)
         _ => "без ошибок"
     };
 
-    public static MemoryCell[] From(byte[] map, long bytes) => [.. map.Select((state, i) => new MemoryCell(i, state, bytes / map.Length))];
+    public static MemoryCell[] From(byte[] map, long bufferBytes) => [.. map.Select((state, cellIndex) => new MemoryCell(cellIndex, state, bufferBytes / map.Length))];
 }
 
 // Итог одной проверки памяти; сохраняется в историю и выгружается в отчёт.
@@ -48,13 +48,13 @@ public class DiagnosticResult : INotifyPropertyChanged
     public string Mode { get; set; } = "Быстрая";
     public DiagnosticStatus Status { get; set; } = DiagnosticStatus.Running;
     public long RequestedBytes { get; set; }
-    // Сколько удалось выделить; при сбое выделения меньше запрошенного. Выделенный не значит проверенный.
-    public long AllocatedBytes { get; set; }
     public long ErrorCount { get; set; }
     public double ElapsedSeconds { get; set; }
     public int Passes { get; set; }
     public string Detail { get; set; } = "";
     public string Configuration { get; set; } = "";
+    // Модули, стоявшие во время проверки (производитель, модель, серийный номер): по ним история находит неисправную планку.
+    public List<string> Modules { get; set; } = [];
     public List<MemoryError> Errors { get; set; } = [];
     public byte[] Map { get; set; } = new byte[MemoryDiagnosticService.MapSize];
 
@@ -64,7 +64,7 @@ public class DiagnosticResult : INotifyPropertyChanged
     [JsonIgnore] public string MemoryText => MemorySnapshot.Format((ulong)RequestedBytes);
     // Объём, прошедший хотя бы один полный проход: после первого прохода — весь буфер, до него — только
     // зелёные блоки карты. При ранней остановке запрошенный объём проверен не весь.
-    [JsonIgnore] public long CheckedBytes => RequestedBytes / Map.Length * (Passes > 0 ? Map.Length : Map.Count(s => s == MemoryDiagnosticService.Ok));
+    [JsonIgnore] public long CheckedBytes => RequestedBytes / Map.Length * (Passes > 0 ? Map.Length : Map.Count(cellState => cellState == MemoryDiagnosticService.Ok));
     // Красный блок первого прохода мог пройти оба обхода, а мог быть остановлен на ошибке — карта этого не различает.
     // Поэтому в таком случае объём указан как нижняя граница.
     [JsonIgnore] public string CheckedText => (Passes == 0 && Map.Contains(MemoryDiagnosticService.Error) ? "не менее " : "")
@@ -78,13 +78,13 @@ public class DiagnosticResult : INotifyPropertyChanged
     // Переносит в идущую проверку данные отчёта о ходе. Автосохранение раз в 10 секунд должно хранить
     // согласованные счётчик, карту и список ошибок (не больше первых 1000, как в итоге), чтобы после
     // аварийного закрытия история показывала то же, что было на экране.
-    public void ApplyProgress(DiagnosticProgress p)
+    public void ApplyProgress(DiagnosticProgress progress)
     {
-        (ElapsedSeconds, ErrorCount, Passes) = (p.Elapsed.TotalSeconds, p.ErrorCount, p.Passes);
-        if (p.Map is not null)
-            Map = p.Map;
-        if (p.Errors is not null)
-            Errors = [.. p.Errors];
+        (ElapsedSeconds, ErrorCount, Passes) = (progress.Elapsed.TotalSeconds, progress.ErrorCount, progress.Passes);
+        if (progress.Map is not null)
+            Map = progress.Map;
+        if (progress.Errors is not null)
+            Errors = [.. progress.Errors];
         // Пустое имя свойства — все привязки к объекту перечитываются, в том числе вычисляемые (статус, карта).
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
     }

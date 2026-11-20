@@ -6,11 +6,11 @@ namespace RAMChecker.Services;
 public record MemorySnapshot(ulong Total, ulong Available, ulong? Committed, ulong? CommitLimit, ulong? Cache)
 {
     public ulong Used => Total - Available;
-    public double Load => Total == 0 ? 0 : Used * 100d / Total;
+    public double LoadPercent => Total == 0 ? 0 : Used * 100d / Total;
     public static string Format(ulong bytes) => bytes < 1073741824
         ? $"{bytes / 1048576d:0.#} МБ" : $"{bytes / 1073741824d:0.0} ГБ";
     // Windows и другим программам оставляем не меньше 1 ГБ или 10 % памяти, иначе страницы буфера уйдут в файл подкачки.
-    public static long SafeTestBytes(MemorySnapshot s) => (long)Math.Max(0d, s.Available - Math.Max(1073741824d, s.Total * .1));
+    public static long SafeTestBytes(MemorySnapshot snapshot) => (long)Math.Max(0d, snapshot.Available - Math.Max(1073741824d, snapshot.Total * .1));
 }
 
 public static partial class MemoryMonitor
@@ -20,26 +20,26 @@ public static partial class MemoryMonitor
 
     // Во время проверки Windows не уходит в сон: ES_CONTINUOUS | ES_SYSTEM_REQUIRED, после проверки — только ES_CONTINUOUS.
     // Флаг действует для вызвавшего потока, поэтому включается и выключается из потока интерфейса.
-    public static void KeepAwake(bool on) => SetThreadExecutionState(on ? 0x80000001u : 0x80000000u);
+    public static void KeepAwake(bool enabled) => SetThreadExecutionState(enabled ? 0x80000001u : 0x80000000u);
 
     public static MemorySnapshot Read()
     {
-        var m = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
-        if (!GlobalMemoryStatusEx(ref m))
+        var memoryStatus = new MemoryStatus { Length = (uint)Marshal.SizeOf<MemoryStatus>() };
+        if (!GlobalMemoryStatusEx(ref memoryStatus))
             throw new Win32Exception(Marshal.GetLastPInvokeError());
-        var p = new PerformanceInfo { Size = (uint)Marshal.SizeOf<PerformanceInfo>() };
-        bool ok = GetPerformanceInfo(ref p, p.Size);
-        return new(m.TotalPhys, m.AvailPhys,
-            ok ? (ulong)p.CommitTotal * (ulong)p.PageSize : null,
-            ok ? (ulong)p.CommitLimit * (ulong)p.PageSize : null,
-            ok ? (ulong)p.SystemCache * (ulong)p.PageSize : null);
+        var performanceInfo = new PerformanceInfo { Size = (uint)Marshal.SizeOf<PerformanceInfo>() };
+        bool performanceInfoRead = GetPerformanceInfo(ref performanceInfo, performanceInfo.Size);
+        return new(memoryStatus.TotalPhysical, memoryStatus.AvailablePhysical,
+            performanceInfoRead ? (ulong)performanceInfo.CommitTotal * (ulong)performanceInfo.PageSize : null,
+            performanceInfoRead ? (ulong)performanceInfo.CommitLimit * (ulong)performanceInfo.PageSize : null,
+            performanceInfoRead ? (ulong)performanceInfo.SystemCache * (ulong)performanceInfo.PageSize : null);
     }
 
     [StructLayout(LayoutKind.Sequential)]
     private struct MemoryStatus
     {
-        public uint Length, Load;
-        public ulong TotalPhys, AvailPhys, TotalPageFile, AvailPageFile, TotalVirtual, AvailVirtual, Extended;
+        public uint Length, MemoryLoad;
+        public ulong TotalPhysical, AvailablePhysical, TotalPageFileBytes, AvailablePageFileBytes, TotalVirtualBytes, AvailableVirtualBytes, AvailableExtendedVirtualBytes;
     }
     [StructLayout(LayoutKind.Sequential)]
     private struct PerformanceInfo
@@ -52,10 +52,10 @@ public static partial class MemoryMonitor
     // LibraryImport (.NET 7+) генерирует код вызова Win32 при компиляции, а не во время работы программы.
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GlobalMemoryStatusEx(ref MemoryStatus status);
+    private static partial bool GlobalMemoryStatusEx(ref MemoryStatus memoryStatusBuffer);
     [LibraryImport("psapi.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static partial bool GetPerformanceInfo(ref PerformanceInfo info, uint size);
+    private static partial bool GetPerformanceInfo(ref PerformanceInfo performanceInformation, uint structureSize);
     [LibraryImport("kernel32.dll")]
-    private static partial uint SetThreadExecutionState(uint flags);
+    private static partial uint SetThreadExecutionState(uint executionStateFlags);
 }

@@ -104,7 +104,7 @@
             <Setter Property="ItemTemplate">
                 <Setter.Value>
                     <DataTemplate>
-                        <Border x:Name="MemoryCell" Height="14" Margin="1.5" CornerRadius="3" ToolTip="{Binding Tip}"
+                        <Border x:Name="MemoryCell" Height="14" Margin="1.5" CornerRadius="3" ToolTip="{Binding TooltipText}"
                                 Background="{DynamicResource ControlStrongFillColorDisabledBrush}" />
                         <DataTemplate.Triggers>
                             <DataTrigger Binding="{Binding State}" Value="1">

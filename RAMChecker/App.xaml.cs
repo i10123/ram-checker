@@ -11,10 +11,10 @@ namespace RAMChecker
             // Интерфейс только русский: даты и дробные числа выглядят одинаково при любом языке Windows.
             CultureInfo.DefaultThreadCurrentCulture = CultureInfo.CurrentCulture = new("ru-RU");
             // Непредвиденная ошибка в интерфейсе показывается сообщением и не закрывает программу посреди проверки.
-            DispatcherUnhandledException += (_, e) =>
+            DispatcherUnhandledException += (_, eventArgs) =>
             {
-                e.Handled = true;
-                MessageBox.Show(e.Exception.Message, "Непредвиденная ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                eventArgs.Handled = true;
+                MessageBox.Show(eventArgs.Exception.Message, "Непредвиденная ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
             };
         }
     }

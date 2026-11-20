@@ -14,15 +14,15 @@ public sealed partial class PawnIO : IDisposable
         ? NativeLibrary.Load(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PawnIO", "PawnIOLib.dll"))
         : IntPtr.Zero);
 
-    public PawnIO(string module)
+    public PawnIO(string moduleFileName)
     {
-        Check(pawnio_open(out handle));
+        ThrowIfFailed(pawnio_open(out handle));
         try
         {
-            using var stream = typeof(PawnIO).Assembly.GetManifestResourceStream("RAMChecker.Drivers." + module)!;
-            var blob = new byte[stream.Length];
-            stream.ReadExactly(blob);
-            Check(pawnio_load(handle, blob, (nuint)blob.Length));
+            using var stream = typeof(PawnIO).Assembly.GetManifestResourceStream("RAMChecker.Drivers." + moduleFileName)!;
+            var moduleBytes = new byte[stream.Length];
+            stream.ReadExactly(moduleBytes);
+            ThrowIfFailed(pawnio_load(handle, moduleBytes, (nuint)moduleBytes.Length));
         }
         catch
         {
@@ -36,7 +36,7 @@ public sealed partial class PawnIO : IDisposable
 
     public void Dispose() => pawnio_close(handle);
 
-    private static void Check(int result)
+    private static void ThrowIfFailed(int result)
     {
         if (result < 0)
             Marshal.ThrowExceptionForHR(result);
@@ -47,7 +47,7 @@ public sealed partial class PawnIO : IDisposable
     [LibraryImport(Lib)]
     private static partial int pawnio_open(out IntPtr handle);
     [LibraryImport(Lib)]
-    private static partial int pawnio_load(IntPtr handle, byte[] blob, nuint size);
+    private static partial int pawnio_load(IntPtr handle, byte[] moduleBytes, nuint size);
     [LibraryImport(Lib, StringMarshalling = StringMarshalling.Utf8)]
     private static partial int pawnio_execute(IntPtr handle, string name, long[] input, nuint inSize, [Out] long[] output, nuint outSize, out nuint returned);
     [LibraryImport(Lib)]
