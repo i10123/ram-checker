@@ -8,7 +8,7 @@
     <Window.DataContext>
         <vm:MainViewModel />
     </Window.DataContext>
-    <!-- Ход проверки на значке в панели задач Windows. -->
+    <!-- индикатор выполнения на значке приложения -->
     <Window.TaskbarItemInfo>
         <TaskbarItemInfo ProgressState="{Binding Test.TaskbarState}" ProgressValue="{Binding Test.TaskbarValue}" />
     </Window.TaskbarItemInfo>
@@ -18,9 +18,8 @@
             <ColumnDefinition />
         </Grid.ColumnDefinitions>
 
-        <!-- Боковое меню разделов. -->
         <DockPanel Margin="12,24,12,12">
-            <ListBox ItemsSource="{Binding Navigation}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" />
+            <ListBox ItemsSource="{Binding Navigation}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" SelectionChanged="ListBox_SelectionChanged" />
         </DockPanel>
 
         <DockPanel Grid.Column="1">
@@ -29,7 +28,6 @@
                     Visibility="{Binding HasNotice, Converter={StaticResource BoolToVisibility}}">
                 <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
             </Border>
-            <!-- Вкладки без заголовков: раздел выбирается в боковом меню. -->
             <TabControl SelectedIndex="{Binding SelectedPage}" BorderThickness="0" Background="Transparent" Padding="0">
                 <TabControl.ItemContainerStyle>
                     <Style TargetType="TabItem">

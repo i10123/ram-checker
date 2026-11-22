@@ -3,7 +3,6 @@
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              StartupUri="MainWindow.xaml"
              ThemeMode="Dark">
-    <!-- Цвета берутся из встроенной тёмной темы Fluent, поэтому собственные словари цветов не нужны. -->
     <Application.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibility" />
 
