@@ -19,7 +19,7 @@
         </Grid.ColumnDefinitions>
 
         <DockPanel Margin="12,24,12,12">
-            <ListBox ItemsSource="{Binding Navigation}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" SelectionChanged="ListBox_SelectionChanged" />
+            <ListBox ItemsSource="{Binding Navigation}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" />
         </DockPanel>
 
         <DockPanel Grid.Column="1">

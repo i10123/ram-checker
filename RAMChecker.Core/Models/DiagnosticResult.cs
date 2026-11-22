@@ -39,13 +39,15 @@ public record MemoryCell(int Index, byte State, long BlockBytes)
     public static MemoryCell[] From(byte[] map, long bufferBytes) => [.. map.Select((state, cellIndex) => new MemoryCell(cellIndex, state, bufferBytes / map.Length))];
 }
 
+public record ModuleLine(string Slot, string Title, string Specs);
+
 // Итог одной проверки памяти; сохраняется в историю и выгружается в отчёт.
 // Во время проверки на странице результатов показан этот же объект, поэтому он сообщает экрану об изменениях.
 public class DiagnosticResult : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
     public DateTimeOffset Started { get; set; } = DateTimeOffset.Now;
-    public string Mode { get; set; } = "Быстрая";
+    public string Mode { get; set; } = "Быстрый";
     public DiagnosticStatus Status { get; set; } = DiagnosticStatus.Running;
     public long RequestedBytes { get; set; }
     public long ErrorCount { get; set; }
@@ -53,8 +55,6 @@ public class DiagnosticResult : INotifyPropertyChanged
     public int Passes { get; set; }
     public string Detail { get; set; } = "";
     public string Configuration { get; set; } = "";
-    // Модули, стоявшие во время проверки (производитель, модель, серийный номер): по ним история находит неисправную планку.
-    public List<string> Modules { get; set; } = [];
     public List<MemoryError> Errors { get; set; } = [];
     public byte[] Map { get; set; } = new byte[MemoryDiagnosticService.MapSize];
 
@@ -74,6 +74,13 @@ public class DiagnosticResult : INotifyPropertyChanged
     // Уровень для цвета в списке: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки.
     [JsonIgnore] public int Level => ErrorCount > 0 ? 2 : Status == DiagnosticStatus.Completed ? 1 : 0;
     [JsonIgnore] public MemoryCell[] Cells => MemoryCell.From(Map, RequestedBytes);
+    // Строка конфигурации «слот: производитель модель, объём, скорость, тайминги» делится на три части для карточки планки.
+    [JsonIgnore] public ModuleLine[] ConfigurationModules => [.. Configuration.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
+    {
+        var slotAndRest = line.Split(": ", 2);
+        var titleAndSpecs = slotAndRest[^1].Split(", ", 2);
+        return new ModuleLine(slotAndRest.Length > 1 ? slotAndRest[0] : "", titleAndSpecs[0], titleAndSpecs.Length > 1 ? titleAndSpecs[1].Replace(", ", " · ") : "");
+    })];
 
     // Переносит в идущую проверку данные отчёта о ходе. Автосохранение раз в 10 секунд должно хранить
     // согласованные счётчик, карту и список ошибок (не больше первых 1000, как в итоге), чтобы после

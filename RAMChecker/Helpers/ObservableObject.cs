@@ -2,14 +2,10 @@ using System.ComponentModel;
 
 namespace RAMChecker.Helpers
 {
-    // Базовый класс ViewModel: сообщает экрану, что данные изменились.
     public abstract class ObservableObject : INotifyPropertyChanged
     {
         public event PropertyChangedEventHandler? PropertyChanged;
 
-        // Без имён свойств WPF перечитывает все привязки объекта. Для частых обновлений
-        // (раз в секунду) перечисляем только изменившиеся свойства, чтобы не перерисовывать весь экран.
-        // params ReadOnlySpan (C# 13) передаёт имена через стек, без создания массива при каждом вызове.
         protected void NotifyChanged(params ReadOnlySpan<string> properties)
         {
             if (properties.Length == 0)

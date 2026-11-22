@@ -4,7 +4,6 @@ using RAMChecker.ViewModels;
 
 namespace RAMChecker
 {
-    // Код окна: запуск модели при открытии и корректная остановка проверки при закрытии.
     public partial class MainWindow : Window
     {
         private bool closingStarted, closeAllowed;
@@ -17,13 +16,11 @@ namespace RAMChecker
 
         private void Window_Activated(object? sender, EventArgs eventArgs) => ViewModel.Test.WindowActivated();
 
-        // Закрытие откладывается, пока фоновая проверка не завершится и не сохранит результат.
         private async void Window_Closing(object? sender, CancelEventArgs eventArgs)
         {
             if (closeAllowed)
                 return;
             eventArgs.Cancel = true;
-            // Крестик в заголовке работает и у отключённого окна: повторное нажатие не должно завершать работу второй раз.
             if (closingStarted)
                 return;
             closingStarted = true;
@@ -32,10 +29,8 @@ namespace RAMChecker
             {
                 await ViewModel.ShutdownAsync();
             }
-            catch (Exception) { } // Сбой при завершении не должен оставить окно открытым и отключённым.
+            catch (Exception) { }
             closeAllowed = true;
-            // Если ждать было нечего, мы всё ещё внутри обработчика Closing, а вызывать Close в нём WPF запрещает.
-            // InvokeAsync выполнит закрытие сразу после выхода из обработчика; ждать его здесь не нужно.
             _ = Dispatcher.InvokeAsync(Close);
         }
     }

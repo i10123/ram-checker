@@ -14,7 +14,6 @@
                     <ColumnDefinition />
                 </Grid.ColumnDefinitions>
 
-                <!-- Параметры проверки. -->
                 <StackPanel>
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
@@ -38,27 +37,9 @@
                             </UniformGrid>
                         </StackPanel>
                     </Border>
-
-                    <!-- Журнал: компактные строки, новые сверху. -->
-                    <Border Style="{StaticResource Card}">
-                        <StackPanel>
-                            <TextBlock Text="Журнал" Style="{StaticResource SectionTitle}" />
-                            <ScrollViewer Height="260" VerticalScrollBarVisibility="Auto">
-                                <ItemsControl ItemsSource="{Binding Events}">
-                                    <ItemsControl.ItemTemplate>
-                                        <DataTemplate>
-                                            <TextBlock Text="{Binding}" FontSize="13" Margin="0,2" TextWrapping="Wrap" />
-                                        </DataTemplate>
-                                    </ItemsControl.ItemTemplate>
-                                </ItemsControl>
-                            </ScrollViewer>
-                        </StackPanel>
-                    </Border>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1">
-                    <!-- Итог последней проверки: цвет и значок как в списке результатов. Без итога шаблон
-                         отрисовался бы с пустыми данными, поэтому плашка скрыта. -->
                     <ContentControl Content="{Binding LastResult}" Visibility="{Binding HasLastResult, Converter={StaticResource BoolToVisibility}}">
                         <ContentControl.ContentTemplate>
                             <DataTemplate>
@@ -84,7 +65,6 @@
                         </ContentControl.ContentTemplate>
                     </ContentControl>
 
-                    <!-- Ход проверки. -->
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="{Binding Stage}" Style="{StaticResource SectionTitle}" />
@@ -119,7 +99,6 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Нагрузка во время проверки: скорость обработки буфера и загрузка памяти системы. -->
                     <Border Style="{StaticResource Card}">
                         <Grid>
                             <Grid.ColumnDefinitions>

@@ -12,7 +12,6 @@ namespace RAMChecker.ViewModels;
 
 public record BarItem(string Name, string Value, double Width);
 
-// Страница «Обзор»: модули памяти, загрузка в реальном времени и замер скорости.
 public class OverviewViewModel : ObservableObject
 {
     private readonly MainViewModel main;
@@ -21,8 +20,6 @@ public class OverviewViewModel : ObservableObject
 
     public ObservableCollection<ModuleMemoryModel> ModulesMemory { get; } = [];
     public MemorySnapshot? Memory { get; private set; }
-    // Точки графика для страницы теста: новая замороженная коллекция на каждое обновление,
-    // потому что изменения внутри одной коллекции WPF не перерисовывает.
     public PointCollection UsagePoints { get; private set; } = [];
     public PointCollection UsageArea { get; private set; } = [];
     public List<BarItem> BenchmarkBars { get; private set; } = [];
@@ -36,13 +33,11 @@ public class OverviewViewModel : ObservableObject
     public string TotalText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Total);
     public string UsedText => Memory is null ? "—" : $"{MemorySnapshot.Format(Memory.Used)} · {Memory.LoadPercent:0}%";
     public string LoadText => Memory is null ? "—" : $"{Memory.LoadPercent:0}%";
-    // Выделенная программам память (commit) вместе с файлом подкачки.
     public string CommitText => Memory is { Committed: ulong committedBytes, CommitLimit: ulong commitLimitBytes } ? $"{MemorySnapshot.Format(committedBytes)} из {MemorySnapshot.Format(commitLimitBytes)}" : "—";
     public GridLength CommitUsed => new(Memory?.Committed ?? 0, GridUnitType.Star);
     public GridLength CommitFree => new(Memory is { Committed: ulong committedBytes, CommitLimit: ulong commitLimitBytes } && commitLimitBytes > committedBytes ? commitLimitBytes - committedBytes : 1, GridUnitType.Star);
     public List<KeyValuePair<string, string>> MemoryRows { get; private set; } = [];
     public string AvailableText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Available);
-    // Пока SMBIOS и SPD читаются в фоне, вместо пустого списка показывается состояние загрузки.
     public bool Loading { get; private set; } = true;
     public string ModulesText => Loading ? "…" : $"{ModulesMemory.Count} шт. · {ModulesMemory.FirstOrDefault()?.RAM_type ?? "—"}";
 
@@ -86,11 +81,10 @@ public class OverviewViewModel : ObservableObject
         }
         catch (Exception ex) { main.Notice = "Не удалось получить сведения о модулях: " + ex.Message; }
         Loading = false;
-        NotifyChanged(); // Изменились сразу список модулей, состояние загрузки и строка о чтении SPD.
-        await ReadWheaAsync(); // Строка журнала появится в таблице на ближайшем обновлении мониторинга.
+        NotifyChanged();
+        await ReadWheaAsync();
     }
 
-    // Паспорт читается один раз: после чтения драйвер освобождается. Без сопоставления модули остаются без таймингов.
     private void ReadSpd(List<ModuleMemoryModel> modules)
     {
         try
@@ -146,28 +140,28 @@ public class OverviewViewModel : ObservableObject
             if (loadSamples.Count > 60)
                 loadSamples.Dequeue();
             UpdateMemoryRows(Memory);
-            // График виден только на странице теста — на других страницах его не пересчитываем.
             if (main.SelectedPage == 1)
                 UpdateChart();
         }
-        catch (Exception ex) { main.Notice = "Мониторинг недоступен: " + ex.Message; }
+        catch (Exception ex) {
+            main.Notice = "Мониторинг недоступен: " + ex.Message;
+        }
         NotifyChanged(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText), nameof(CommitText), nameof(CommitUsed), nameof(CommitFree));
     }
 
-    // График последних 60 измерений в области 600 × 160; заливка замыкается по нижнему краю.
+    // График последних 60 измерений
     public void UpdateChart()
     {
         if (loadSamples.Count == 0)
             return;
         var chartPoints = loadSamples.Select((loadPercent, sampleIndex) => new Point((60 - loadSamples.Count + sampleIndex) * 600 / 59d, 160 - loadPercent * 1.6)).ToList();
-        UsagePoints = new PointCollection(chartPoints);
-        UsageArea = new PointCollection(chartPoints.Append(new(600, 160)).Append(new(chartPoints[0].X, 160)));
+        UsagePoints = [.. chartPoints];
+        UsageArea = [.. chartPoints.Append(new(600, 160)).Append(new(chartPoints[0].X, 160))];
         UsagePoints.Freeze();
         UsageArea.Freeze();
         NotifyChanged(nameof(UsagePoints), nameof(UsageArea));
     }
 
-    // Строки пересоздаются, только когда меняется хотя бы одно значение, — экран не перестраивается каждую секунду.
     private void UpdateMemoryRows(MemorySnapshot snapshot)
     {
         List<KeyValuePair<string, string>> rows =
@@ -197,7 +191,7 @@ public class OverviewViewModel : ObservableObject
             BenchmarkText = $"Задержка: {benchmark.LatencyNanoseconds:0.0} нс";
         }
         catch (Exception ex) { BenchmarkText = "Замер не выполнен: " + ex.Message; }
-        MemoryMonitor.ReturnFreeMemory(); // Буферы замера больше не нужны.
+        MemoryMonitor.ReturnFreeMemory();
         BenchmarkRunning = false;
         NotifyChanged();
     }
@@ -206,10 +200,9 @@ public class OverviewViewModel : ObservableObject
     {
         try
         {
-            // Ключи запуска (например, --imitation) передаются новому процессу.
             Process.Start(new ProcessStartInfo(Environment.ProcessPath!, Environment.GetCommandLineArgs().Skip(1)) { UseShellExecute = true, Verb = "runas" });
             Application.Current.MainWindow.Close();
         }
-        catch (Exception) { } // Пользователь отменил запрос UAC — продолжаем без прав администратора.
+        catch (Exception) { }
     }
 }

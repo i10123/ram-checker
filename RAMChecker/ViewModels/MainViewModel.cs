@@ -6,11 +6,9 @@ using RAMChecker.Services;
 
 namespace RAMChecker.ViewModels;
 
-// Главная модель окна: навигация и история проверок. Страницы «Обзор» и «Тестирование» — отдельные модели.
 public class MainViewModel : ObservableObject
 {
     private readonly LocalStorage storage = new();
-    // Мониторинг обновляется раз в секунду.
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool historyWritable = true;
     private Task loading = Task.CompletedTask;
@@ -20,32 +18,16 @@ public class MainViewModel : ObservableObject
     public ObservableCollection<DiagnosticResult> History { get; } = [];
     public string[] Navigation { get; } = ["Обзор", "Тестирование", "Результаты"];
     public bool HasNotice => Notice.Length > 0;
-    // Подробности показываются только для выбранной проверки: выделение в списке можно снять щелчком с Ctrl.
     public bool HasSelectedResult => SelectedResult is not null;
     public bool HasNoHistory => History.Count == 0;
     public RelayCommand DeleteResultCommand { get; }
-
-    // Вывод по истории: модули, которые стояли во всех проверках с ошибками и ни в одной завершённой проверке без ошибок.
-    // Если проверять планки по одной, программа сама показывает, с какой из них появляются ошибки.
-    public string Suspect
-    {
-        get
-        {
-            var modulesInRunsWithErrors = History.Where(historyItem => historyItem.HasErrors && historyItem.Modules.Count > 0).Select(historyItem => historyItem.Modules).ToList();
-            var modulesInCleanRuns = History.Where(historyItem => historyItem is { Status: DiagnosticStatus.Completed, HasErrors: false }).SelectMany(historyItem => historyItem.Modules).ToHashSet();
-            if (modulesInRunsWithErrors.Count == 0 || modulesInCleanRuns.Count == 0)
-                return "";
-            var suspectModules = modulesInRunsWithErrors.Aggregate((commonModules, nextModules) => [.. commonModules.Intersect(nextModules)]).Except(modulesInCleanRuns).ToList();
-            return suspectModules.Count == 0 ? "" : "Ошибки находились только с модулем: " + string.Join("; ", suspectModules);
-        }
-    }
 
     public MainViewModel()
     {
         Overview = new(this);
         Test = new(this);
         DeleteResultCommand = new(DeleteResult, () => SelectedResult is { Status: not DiagnosticStatus.Running });
-        timer.Tick += (_, _) =>
+        timer.Tick += (sender, eventArgs) =>
         {
             Overview.Tick();
             Test.Tick();
@@ -57,12 +39,11 @@ public class MainViewModel : ObservableObject
         get;
         set
         {
-            // Щелчок с Ctrl снимает выделение в меню (индекс -1) — тогда остаётся прежняя страница.
             if (value >= 0)
                 field = value;
             NotifyChanged();
             if (field == 1)
-                Overview.UpdateChart(); // График не пересчитывался, пока страница теста была скрыта.
+                Overview.UpdateChart();
         }
     }
 
@@ -107,7 +88,6 @@ public class MainViewModel : ObservableObject
         timer.Start();
         loading = Overview.LoadModulesAsync();
         await loading;
-        // Запуск окна и чтение SMBIOS оставляют много временных объектов — сразу возвращаем эту память Windows.
         MemoryMonitor.ReturnFreeMemory();
     }
 
@@ -126,11 +106,8 @@ public class MainViewModel : ObservableObject
         SaveHistory();
     }
 
-    // История сохраняется всегда: после каждого изменения и раз в 10 секунд во время проверки.
     public void SaveHistory()
     {
-        // Нужен для автосохранения во время проверки: остальные изменения истории и так обновляют все привязки.
-        NotifyChanged(nameof(Suspect));
         if (!historyWritable)
             return;
         try
@@ -140,8 +117,6 @@ public class MainViewModel : ObservableObject
         catch (Exception ex) { Notice = "Не удалось сохранить историю: " + ex.Message; }
     }
 
-    // Закрытие ждёт загрузку модулей, чтобы не оборвать чтение SPD посреди обращения к драйверу.
-    // Замер скорости не ждём — он работает лишь со своими массивами и завершится вместе с процессом.
     public async Task ShutdownAsync()
     {
         timer.Stop();

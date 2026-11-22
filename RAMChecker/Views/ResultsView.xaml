@@ -16,14 +16,12 @@
         </Grid.ColumnDefinitions>
         <TextBlock Grid.ColumnSpan="2" Text="Результаты" Style="{StaticResource PageTitle}" />
 
-        <!-- История проверок. -->
         <Border Grid.Row="1" Style="{StaticResource Card}">
             <Grid>
                 <TextBlock Text="Проверок пока нет. Запустите тест на вкладке «Тестирование»." Style="{StaticResource Caption}"
                            Visibility="{Binding HasNoHistory, Converter={StaticResource BoolToVisibility}}" />
                 <ListBox ItemsSource="{Binding History}" SelectedItem="{Binding SelectedResult}" Background="Transparent">
                     <ListBox.ItemTemplate>
-                        <!-- Цветная полоска и значок: зелёный — без ошибок, красный — ошибки, жёлтый — не завершена. -->
                         <DataTemplate>
                             <Grid Margin="0,4">
                                 <Grid.ColumnDefinitions>
@@ -53,20 +51,54 @@
             </Grid>
         </Border>
 
-        <!-- Подробности выбранной проверки. -->
         <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource Card}"
                 Visibility="{Binding HasSelectedResult,Converter={StaticResource BoolToVisibility}}">
             <DockPanel DataContext="{Binding SelectedResult}">
                 <StackPanel DockPanel.Dock="Top">
                     <TextBlock Text="{Binding StatusText}" FontSize="22" FontWeight="SemiBold" />
-                    <TextBlock Text="{Binding Description}" Style="{StaticResource Caption}" Margin="0,4,0,12" />
-                    <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" />
-                    <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" Margin="0,8,0,0" />
-                    <TextBlock Text="{Binding Configuration}" Style="{StaticResource Caption}" Margin="0,8,0,0" />
-                    <TextBlock Text="{Binding DataContext.Suspect, RelativeSource={RelativeSource AncestorType=UserControl}}" FontWeight="SemiBold"
-                               TextWrapping="Wrap" Margin="0,8,0,0" />
-                    <ItemsControl ItemsSource="{Binding Cells}" Style="{StaticResource MemoryMap}" Margin="0,16" />
-                    <StackPanel Orientation="Horizontal" Margin="0,0,0,16">
+                    <TextBlock Text="{Binding Recommendation}" TextWrapping="Wrap" Margin="0,4,0,16" />
+                    <UniformGrid Columns="3" Margin="0,0,0,8">
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Режим" Style="{StaticResource Caption}" />
+                            <TextBlock Text="{Binding Mode}" Style="{StaticResource Number}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Длительность" Style="{StaticResource Caption}" />
+                            <TextBlock Text="{Binding DurationText}" Style="{StaticResource Number}" />
+                        </StackPanel>
+                        <StackPanel Margin="0,0,0,12">
+                            <TextBlock Text="Объём" Style="{StaticResource Caption}" />
+                            <TextBlock Text="{Binding MemoryText}" Style="{StaticResource Number}" />
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Проверено" Style="{StaticResource Caption}" />
+                            <TextBlock Text="{Binding CheckedText}" Style="{StaticResource Number}" />
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Проходов" Style="{StaticResource Caption}" />
+                            <TextBlock Text="{Binding Passes}" Style="{StaticResource Number}" />
+                        </StackPanel>
+                        <StackPanel>
+                            <TextBlock Text="Ошибок" Style="{StaticResource Caption}" />
+                            <TextBlock Text="{Binding ErrorCount}" Style="{StaticResource Number}" />
+                        </StackPanel>
+                    </UniformGrid>
+                    <TextBlock Text="{Binding Detail}" Style="{StaticResource Caption}" Margin="0,0,0,8" />
+                    <ItemsControl ItemsSource="{Binding ConfigurationModules}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <Border Background="{DynamicResource ControlFillColorDefaultBrush}" BorderBrush="{DynamicResource AccentFillColorDefaultBrush}"
+                                        BorderThickness="3,0,0,0" CornerRadius="6" Padding="14,10" Margin="0,0,0,8">
+                                    <StackPanel>
+                                        <TextBlock Text="{Binding Slot}" Style="{StaticResource Caption}" />
+                                        <TextBlock Text="{Binding Title}" FontSize="16" FontWeight="SemiBold" TextWrapping="Wrap" Margin="0,2" />
+                                        <TextBlock Text="{Binding Specs}" Style="{StaticResource Caption}" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <StackPanel Orientation="Horizontal" Margin="0,16">
                         <Button Content="Сохранить отчёт" Click="Export_Click" Style="{DynamicResource AccentButtonStyle}" />
                         <Button Content="Удалить" Margin="8,0" Command="{Binding DataContext.DeleteResultCommand, RelativeSource={RelativeSource AncestorType=UserControl}}" />
                     </StackPanel>

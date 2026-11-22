@@ -60,7 +60,7 @@ public class LocalStorage
         return items;
     }
 
-    private static bool IsValid(DiagnosticResult record) => record is { Mode: not null, Detail: not null, Configuration: not null, Modules: not null, Errors: not null,
+    private static bool IsValid(DiagnosticResult record) => record is { Mode: not null, Detail: not null, Configuration: not null, Errors: not null,
             Map.Length: MemoryDiagnosticService.MapSize, RequestedBytes: >= 0, ErrorCount: >= 0, Passes: >= 0, ElapsedSeconds: >= 0 and < 1e9 }
         && Enum.IsDefined(record.Status) && record.Map.All(cellState => cellState <= MemoryDiagnosticService.Waiting) && !record.Errors.Contains(null!);
 }

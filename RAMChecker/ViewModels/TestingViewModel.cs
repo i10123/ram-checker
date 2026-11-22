@@ -1,4 +1,3 @@
-using System.Collections.ObjectModel;
 using System.Media;
 using System.Windows;
 using System.Windows.Shell;
@@ -8,7 +7,6 @@ using RAMChecker.Services;
 
 namespace RAMChecker.ViewModels;
 
-// Страница «Тестирование»: выбор режима и объёма, ход проверки и карта памяти.
 public class TestingViewModel : ObservableObject
 {
     private static readonly TimeSpan?[] Durations = [TimeSpan.FromMinutes(10), TimeSpan.FromHours(2), null, null];
@@ -18,24 +16,18 @@ public class TestingViewModel : ObservableObject
     private DiagnosticResult? active;
     private long lastSaved;
 
-    public string[] Modes { get; } = ["Быстрая · 10 минут", "Полная · 2 часа", "Циклическая · до остановки", "Стресс · вся свободная память"];
+    public string[] Modes { get; } = ["Быстрый · 10 минут", "Полный · 2 часа", "Циклический · до остановки", "Стресс · вся свободная память"];
     public int ModeIndex { get; set; }
     public bool StopOnError { get; set; }
-    public ObservableCollection<string> Events { get; } = [];
     public string Stage { get; private set; } = "Готово к запуску";
     public double Percent { get; private set; }
     public string PassText { get; private set; } = "—";
     public MemoryCell[] Cells { get; private set; } = MemoryCell.From(new byte[MemoryDiagnosticService.MapSize], 0);
     public string SpeedText { get; private set; } = "—";
-    // Итог последней проверки для плашки на странице; при новом запуске плашка скрывается.
     public DiagnosticResult? LastResult { get; private set; }
-    // Плашка нужна только для настоящего итога: остановку пользователь выбрал сам, о ней сообщает заголовок.
-    // Найденные до остановки ошибки показываются всегда.
     public bool HasLastResult => LastResult is { HasErrors: true } or { Status: not DiagnosticStatus.Stopped };
     private bool resultOnTaskbar;
 
-    // Значок в панели задач: полоса растёт по ходу проверки и краснеет при ошибках.
-    // Итог остаётся на значке, пока пользователь не вернётся в окно.
     public TaskbarItemProgressState TaskbarState => (active ?? (resultOnTaskbar ? LastResult : null)) switch
     {
         null => TaskbarItemProgressState.None,
@@ -47,23 +39,16 @@ public class TestingViewModel : ObservableObject
     public OverviewViewModel Overview => main.Overview;
     public bool IsRunning => cancellation is not null;
     public bool IsIdle => !IsRunning;
-    // После завершения цифры берутся из итога, чтобы они совпадали с плашкой.
     public string ElapsedText => (active ?? LastResult)?.DurationText ?? "00:00:00";
     public string ErrorCountText => ((active ?? LastResult)?.ErrorCount ?? 0).ToString();
-    // Для циклического и стресс-режима длительность не задана — оставшееся время неизвестно.
     public string RemainingText => active is not null && Durations[ModeIndex] is { } modeDuration
         ? TimeSpan.FromSeconds(Math.Max(0, modeDuration.TotalSeconds - active.ElapsedSeconds)).ToString(@"hh\:mm\:ss") : "—";
     public string TestMemoryText => $"{MemoryMiB:0} МБ";
     public RelayCommand StartCommand { get; }
     public RelayCommand StopCommand { get; }
 
-    // Резерв для Windows: проверять можно только часть свободной памяти. Безопасный объём может быть и меньше
-    // минимальных 64 МБ — тогда запуск запрещён, а ползунку всё равно нужен максимум не меньше минимума.
     private static double SafeMiB(MemorySnapshot? module) => module is null ? 0 : MemorySnapshot.SafeTestBytes(module) >> 20;
-    // Во время проверки буфер сам занимает свободную память: максимум не опускается ниже выбранного объёма,
-    // иначе ползунок на время проверки уезжал бы в сторону.
     public double MaxMemoryMiB => Math.Max(IsRunning ? MemoryMiB : 64, SafeMiB(main.Overview.Memory));
-    // Стресс-режим сам берёт весь допустимый объём, поэтому ему достаточно минимальных 64 МБ.
     public bool MemoryShort => IsIdle && (ModeIndex == 3 ? 64 : MemoryMiB) > SafeMiB(main.Overview.Memory);
 
     // Объём кратен 16 МБ, чтобы буфер делился на 256 равных блоков карты.
@@ -80,12 +65,11 @@ public class TestingViewModel : ObservableObject
     public TestingViewModel(MainViewModel main)
     {
         this.main = main;
-        // Задача запуска запоминается, чтобы при закрытии окна дождаться сохранения результата.
         StartCommand = new(() => running = StartAsync(), () => !IsRunning && !main.Overview.BenchmarkRunning && !main.Overview.Loading && !MemoryShort);
         StopCommand = new(() => cancellation?.Cancel(), () => IsRunning);
     }
 
-    // Промежуточное автосохранение каждые 10 секунд: история переживёт аварийное закрытие.
+    // Промежуточное автосохранение каждые 10 секунд
     public void Tick()
     {
         if (active is not null && active.ElapsedSeconds - lastSaved >= 10)
@@ -93,7 +77,7 @@ public class TestingViewModel : ObservableObject
             lastSaved = (long)active.ElapsedSeconds;
             main.SaveHistory();
         }
-        NotifyChanged(nameof(MaxMemoryMiB), nameof(MemoryShort)); // Свободная память меняется, вместе с ней — допустимый объём проверки.
+        NotifyChanged(nameof(MaxMemoryMiB), nameof(MemoryShort));
     }
 
     public async Task StopAsync()
@@ -103,12 +87,12 @@ public class TestingViewModel : ObservableObject
             await running;
     }
 
-    // Кнопка не ожидает эту задачу, поэтому сбой проверки обрабатывается внутри метода.
     private async Task StartAsync()
     {
         // Стресс-режим берёт весь допустимый объём, чтобы нагрузить память и все ядра до предела.
         if (ModeIndex == 3)
             MemoryMiB = MaxMemoryMiB;
+        // Предупреждение об опасной операции: большой буфер может замедлить Windows и другие программы.
         // Предупреждение об опасной операции: большой буфер может замедлить Windows и другие программы.
         if ((ModeIndex == 3 || MemoryMiB * 2 > MaxMemoryMiB) && MessageBox.Show(
             $"Проверка займёт {TestMemoryText} и загрузит все ядра процессора. Компьютер может временно замедлиться, " +
@@ -122,24 +106,19 @@ public class TestingViewModel : ObservableObject
             return;
         }
         // Запуск с ключом --imitation добавляет искусственную ошибку, чтобы показать, как выглядит неисправная память.
-        // У такой проверки модули не запоминаются, иначе история обвинила бы исправную планку.
         bool imitation = Environment.GetCommandLineArgs().Contains("--imitation");
         var session = new DiagnosticResult
         {
             Mode = Modes[ModeIndex].Split(' ')[0],
             RequestedBytes = (long)MemoryMiB << 20,
             Configuration = string.Join("\n", main.Overview.ModulesMemory.Select(module =>
-                $"{module.RAM_slot}: {module.RAM_maker} {module.RAM_partNumber}, {module.size_GB} ГБ, {module.RAM_speed}, тайминги {module.RAM_timings}")),
-            Modules = imitation ? [] : [.. main.Overview.ModulesMemory.Select(module => $"{module.RAM_maker} {module.RAM_partNumber} (серийный номер {module.RAM_serialNumber})")]
+                $"{module.RAM_slot}: {module.RAM_maker} {module.RAM_partNumber}, {module.size_GB} ГБ, {module.RAM_speed.Split(" (")[0]}"))
         };
         (lastSaved, LastResult) = (0, null);
-        Events.Clear();
-        Log($"Запуск: {session.Mode}, {TestMemoryText}");
         main.AddResult(session);
 
         // Сервис сообщает прогресс из фонового потока, Progress переносит его в поток интерфейса.
         var lastSpeedSample = (Seconds: 0d, Bytes: 0L);
-        var lastLoggedPass = (Seconds: -10d, Errors: 0L); // когда и с каким числом ошибок проход записан в журнал последний раз
         var progress = new Progress<DiagnosticProgress>(progressReport =>
         {
             // Скорость — сколько гигабайт буфера записано и проверено за время с прошлого отчёта.
@@ -150,19 +129,10 @@ public class TestingViewModel : ObservableObject
             }
             if (progressReport.Map is not null)
                 Cells = MemoryCell.From(progressReport.Map, session.RequestedBytes);
-            // На небольшом буфере проходит несколько проходов в секунду. Чтобы журнал не вытеснял сам себя, проход
-            // записывается не чаще раза в 10 секунд; проход, в котором появилась первая ошибка, записывается всегда.
-            if (progressReport.Passes > session.Passes && (progressReport.Elapsed.TotalSeconds - lastLoggedPass.Seconds >= 10 || progressReport.ErrorCount > 0 != lastLoggedPass.Errors > 0))
-            {
-                Log($"Проход {progressReport.Passes} завершён, ошибок: {progressReport.ErrorCount}");
-                lastLoggedPass = (progressReport.Elapsed.TotalSeconds, progressReport.ErrorCount);
-            }
             (Stage, Percent, PassText) = (progressReport.Stage, progressReport.Percent, progressReport.Pass.ToString());
             session.ApplyProgress(progressReport);
             NotifyChanged();
         });
-        if (imitation)
-            Log("Имитация ошибки памяти включена");
         (active, cancellation) = (session, new());
         MemoryMonitor.KeepAwake(true);
         DiagnosticResult result;
@@ -172,7 +142,6 @@ public class TestingViewModel : ObservableObject
             result.Started = session.Started;
             result.Mode = session.Mode;
             result.Configuration = session.Configuration;
-            result.Modules = session.Modules;
         }
         catch (Exception ex)
         {
@@ -190,7 +159,6 @@ public class TestingViewModel : ObservableObject
         main.History[main.History.IndexOf(session)] = result;
         main.SelectedResult = result;
         main.SaveHistory();
-        Log(result.StatusText);
         (Stage, Cells, Percent, SpeedText, LastResult) = (result.StatusText, result.Cells, result.Status == DiagnosticStatus.Completed ? 100 : Percent, "—", result);
         await main.Overview.ReadWheaAsync(); // За время проверки Windows могла записать новые ошибки памяти.
         MemoryMonitor.ReturnFreeMemory(); // Убираем накопившиеся за проверку снимки прогресса.
@@ -204,12 +172,5 @@ public class TestingViewModel : ObservableObject
     {
         resultOnTaskbar = false;
         NotifyChanged(nameof(TaskbarState));
-    }
-
-    private void Log(string text)
-    {
-        Events.Insert(0, $"{DateTime.Now:HH:mm:ss} · {text}");
-        if (Events.Count > 200)
-            Events.RemoveAt(Events.Count - 1);
     }
 }

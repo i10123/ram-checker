@@ -9,7 +9,6 @@
         <StackPanel Margin="16,24,16,8">
             <TextBlock Text="Обзор" Style="{StaticResource PageTitle}" />
 
-            <!-- Без прав администратора драйвер недоступен: предлагаем перезапуск. -->
             <Border Style="{StaticResource Card}" Visibility="{Binding NeedsAdministrator, Converter={StaticResource BoolToVisibility}}">
                 <DockPanel>
                     <Button DockPanel.Dock="Right" Content="Перезапустить от администратора" Command="{Binding AdministratorCommand}"
@@ -21,7 +20,6 @@
                 </DockPanel>
             </Border>
 
-            <!-- Сводка по памяти системы. -->
             <UniformGrid Columns="4">
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
@@ -55,7 +53,6 @@
                     <ColumnDefinition />
                 </Grid.ColumnDefinitions>
 
-                <!-- Паспорт выбранного модуля. -->
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <TextBlock Text="Модуль памяти" Style="{StaticResource SectionTitle}" />
@@ -69,7 +66,6 @@
                 </Border>
 
                 <StackPanel Grid.Column="1">
-                    <!-- Как Windows распределяет память: эти данные не повторяют сводку сверху. -->
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Распределение памяти" Style="{StaticResource SectionTitle}" />
@@ -77,7 +73,6 @@
                                 <TextBlock DockPanel.Dock="Right" Text="{Binding CommitText}" />
                                 <TextBlock Text="Выделено программам" Style="{StaticResource Caption}" />
                             </DockPanel>
-                            <!-- Полоса без анимации: две колонки делят ширину пропорционально выделенной и свободной памяти. -->
                             <Grid Height="8" Margin="0,8,0,16">
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="{Binding CommitUsed}" />
@@ -90,7 +85,6 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- Замер скорости: столбцы пропорциональны лучшему результату. -->
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="Скорость памяти" Style="{StaticResource SectionTitle}" />

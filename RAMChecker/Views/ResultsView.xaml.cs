@@ -1,6 +1,4 @@
 using System.Diagnostics;
-using System.IO;
-using System.Text;
 using System.Windows;
 using System.Windows.Controls;
 using Microsoft.Win32;
@@ -13,19 +11,23 @@ public partial class ResultsView : UserControl
 {
     public ResultsView() => InitializeComponent();
 
-    // Сохраняет HTML-отчёт выбранной проверки и сразу открывает его в браузере.
     private void Export_Click(object sender, RoutedEventArgs e)
     {
         if (((Button)sender).DataContext is not DiagnosticResult result)
             return;
-        var dialog = new SaveFileDialog { FileName = $"MemScope-{result.Started:yyyyMMdd-HHmmss}.html", Filter = "HTML|*.html" };
+        var dialog = new SaveFileDialog {
+            FileName = $"MemScope {result.Started:dd-MM-yyyy HH-mm-ss}.html",
+            Filter = "HTML|*.html|PDF|*.pdf|CSV|*.csv|Markdown|*.md"
+        };
         if (dialog.ShowDialog() != true)
             return;
         try
         {
-            File.WriteAllText(dialog.FileName, ReportExporter.CreateHtml(result), new UTF8Encoding(true));
+            ReportExporter.Save(result, dialog.FileName);
             Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
         }
-        catch (Exception ex) { MessageBox.Show(ex.Message, "Не удалось сохранить отчёт", MessageBoxButton.OK, MessageBoxImage.Error); }
+        catch (Exception ex) {
+            MessageBox.Show(ex.Message, "Не удалось сохранить отчёт", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
     }
 }
