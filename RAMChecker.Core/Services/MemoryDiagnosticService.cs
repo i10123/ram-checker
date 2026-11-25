@@ -7,8 +7,8 @@ using RAMChecker.Models;
 namespace RAMChecker.Services;
 
 // Map и Errors — копии, которые интерфейс может оставить у себя; null — без изменений с прошлого отчёта.
-public record DiagnosticProgress(string Stage, int Pass, int Passes, double Percent, TimeSpan Elapsed, long ErrorCount, long ProcessedBytes,
-    byte[]? Map, MemoryError[]? Errors);
+public record DiagnosticProgress(string Stage, int Pass, int Passes, double Percent, TimeSpan Elapsed,
+    long ErrorCount, long ProcessedBytes, byte[]? Map, MemoryError[]? Errors);
 
 // Собственный алгоритм «Свой адрес с инверсией». Один проход состоит из трёх шагов:
 // 1) в каждую ячейку записывается значение шаблона; четыре шаблона сменяют друг друга по проходам:

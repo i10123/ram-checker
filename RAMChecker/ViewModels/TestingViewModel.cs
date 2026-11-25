@@ -112,7 +112,7 @@ public class TestingViewModel : ObservableObject
             Mode = Modes[ModeIndex].Split(' ')[0],
             RequestedBytes = (long)MemoryMiB << 20,
             Configuration = string.Join("\n", main.Overview.ModulesMemory.Select(module =>
-                $"{module.RAM_slot}: {module.RAM_maker} {module.RAM_partNumber}, {module.size_GB} ГБ, {module.RAM_speed.Split(" (")[0]}"))
+                $"{module.RAM_slot}: {module.RAM_maker} {module.RAM_partNumber}, {module.Size_GB} ГБ, {module.RAM_speed.Split(" (")[0]}"))
         };
         (lastSaved, LastResult) = (0, null);
         main.AddResult(session);

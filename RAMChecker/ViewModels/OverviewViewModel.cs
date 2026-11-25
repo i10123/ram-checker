@@ -62,7 +62,7 @@ public class OverviewViewModel : ObservableObject
     public List<KeyValuePair<string, string>> ModuleRows => SelectedModule is not { } module ? [] :
     [
         new("Производитель", module.RAM_maker), new("Модель", module.RAM_partNumber), new("Серийный номер", module.RAM_serialNumber),
-        new("Тип", $"{module.RAM_type} {module.RAM_formFactor}"), new("Объём", $"{module.size_GB} ГБ"), new("Слот", module.RAM_slot),
+        new("Тип", $"{module.RAM_type} {module.RAM_formFactor}"), new("Объём", $"{module.Size_GB} ГБ"), new("Слот", module.RAM_slot),
         new("Текущая частота", module.RAM_speed), new("Номинальная частота", module.RAM_nominalSpeed),
         new("Тайминги CL-tRCD-tRP-tRAS", module.RAM_timings), new("tRC", module.RAM_tRC),
         new("Напряжение", module.RAM_voltage)

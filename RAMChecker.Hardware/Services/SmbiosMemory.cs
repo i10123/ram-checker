@@ -74,7 +74,7 @@ public static partial class SmbiosMemory
         return new ModuleMemoryModel
         {
             Number = moduleNumber,
-            size_GB = (int)(megabytes >> 10),
+            Size_GB = (int)(megabytes >> 10),
             RAM_maker = ReadString(0x17),
             RAM_partNumber = ReadString(0x1A),
             RAM_serialNumber = ReadString(0x18),

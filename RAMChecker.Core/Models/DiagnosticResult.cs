@@ -4,8 +4,7 @@ using RAMChecker.Services;
 
 namespace RAMChecker.Models;
 
-// Состояние проверки. В history.json хранится названием ("Completed"), как раньше хранились строки,
-// поэтому история прежних версий читается без изменений, а опечатку в названии поймает компилятор.
+// Состояние проверки. В history.json хранится названием ("Completed")
 [JsonConverter(typeof(JsonStringEnumConverter<DiagnosticStatus>))]
 public enum DiagnosticStatus
 {
@@ -42,7 +41,6 @@ public record MemoryCell(int Index, byte State, long BlockBytes)
 public record ModuleLine(string Slot, string Title, string Specs);
 
 // Итог одной проверки памяти; сохраняется в историю и выгружается в отчёт.
-// Во время проверки на странице результатов показан этот же объект, поэтому он сообщает экрану об изменениях.
 public class DiagnosticResult : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
