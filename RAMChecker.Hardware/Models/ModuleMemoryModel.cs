@@ -6,7 +6,7 @@ namespace RAMChecker.Models
         public const string NoData = "Нет данных";
 
         public int Number { get; set; }
-        public int size_GB { get; set; }
+        public int Size_GB { get; set; }
         public string RAM_maker { get; set; } = NoData;
         public string RAM_partNumber { get; set; } = NoData;
         public string RAM_serialNumber { get; set; } = NoData;

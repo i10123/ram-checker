@@ -17,10 +17,10 @@ public static class SpdMatcher
         List<(ModuleMemoryModel, SpdInfo)> pairs = [.. from module in modules from info in infos
             where IsSameModule(module, info) && infos.Count(otherInfo => IsSameModule(module, otherInfo)) == 1 && modules.Count(otherModule => IsSameModule(otherModule, info)) == 1 select (module, info)];
         matchMethod = "совпали серийный номер и модель";
-        if (pairs.Count == 0 && infos.Count == modules.Count && modules.Zip(infos).All(pair => pair.First.size_GB == pair.Second.SizeGB))
+        if (pairs.Count == 0 && infos.Count == modules.Count && modules.Zip(infos).All(pair => pair.First.Size_GB == pair.Second.SizeGB))
         {
             pairs = [.. modules.Zip(infos)];
-            matchMethod = modules.Select(module => module.size_GB).Distinct().Count() < modules.Count ? "отнесён по порядку слотов, предположительно" : "по порядку слотов";
+            matchMethod = modules.Select(module => module.Size_GB).Distinct().Count() < modules.Count ? "отнесён по порядку слотов, предположительно" : "по порядку слотов";
         }
         return pairs;
     }

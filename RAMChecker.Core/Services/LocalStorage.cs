@@ -1,15 +1,13 @@
-using System.IO;
 using System.Text.Json;
 using RAMChecker.Models;
 
 namespace RAMChecker.Services;
 
-public class LocalStorage
+public class LocalStorage(string? customDirectory = null)
 {
-    public string DirectoryPath { get; }
-    private readonly JsonSerializerOptions jsonOptions = new() { WriteIndented = true };
-    public LocalStorage(string? customDirectory = null) => DirectoryPath = customDirectory ?? Path.Combine(
+    public string DirectoryPath { get; } = customDirectory ?? Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "MemScope");
+    private readonly JsonSerializerOptions jsonOptions = new() { WriteIndented = true };
 
     public T? Read<T>(string fileName)
     {

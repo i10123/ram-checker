@@ -223,10 +223,10 @@ var smbios = SmbiosMemory.Parse(Table(Record(1, 8, _ => { }, "BIOS"),
     Record(17, 0x28, Dimm(8192, 26), "DIMM 1", "Channel A", "Kingston ", "1234ABCD", "KHX3200 "),
     Record(17, 0x28, Dimm(0, 26), "DIMM 2", "Channel B"),   // пустой слот
     Record(17, 0x28, Dimm(0x7FFF, 34), "DIMM 3", "Channel C", "Kingston ", "1234ABCD", "KHX3200 ")));
-Check(smbios.Count == 2 && smbios[0] is { size_GB: 8, RAM_maker: "Kingston", RAM_partNumber: "KHX3200", RAM_serialNumber: "1234ABCD", RAM_type: "DDR4",
+Check(smbios.Count == 2 && smbios[0] is { Size_GB: 8, RAM_maker: "Kingston", RAM_partNumber: "KHX3200", RAM_serialNumber: "1234ABCD", RAM_type: "DDR4",
     RAM_formFactor: "SO-DIMM", RAM_slot: "Channel A · DIMM 1", RAM_speed: "3200 MT/s (1600 МГц)" } && smbios[0].RAM_voltage == $"{1350 / 1000m:0.00} В", "SMBIOS: планка разобрана, пустой слот и чужая запись пропущены");
-Check(smbios[1] is { RAM_type: "DDR5", Number: 2, size_GB: 16 }, "SMBIOS: нумерация идёт по найденным планкам, большой размер берётся из расширенного поля");
-Check(SmbiosMemory.Parse(Table(Record(17, 0x1B, record => (record[0x0C], record[0x0D], record[0x12]) = (0, 0x10, 24), "A", "B", "C", "D", "E")))[0] is { size_GB: 4, RAM_speed: ModuleMemoryModel.NoData, RAM_voltage: ModuleMemoryModel.NoData },
+Check(smbios[1] is { RAM_type: "DDR5", Number: 2, Size_GB: 16 }, "SMBIOS: нумерация идёт по найденным планкам, большой размер берётся из расширенного поля");
+Check(SmbiosMemory.Parse(Table(Record(17, 0x1B, record => (record[0x0C], record[0x0D], record[0x12]) = (0, 0x10, 24), "A", "B", "C", "D", "E")))[0] is { Size_GB: 4, RAM_speed: ModuleMemoryModel.NoData, RAM_voltage: ModuleMemoryModel.NoData },
     "SMBIOS: у короткой записи нет скорости и напряжения");
 Check(SmbiosMemory.Parse(Table(Record(17, 0x28, Dimm(8192, 26), "A"), [17, 0xFF, 0, 0], Record(17, 0x28, Dimm(8192, 26), "A"))).Count == 1, "SMBIOS: испорченная запись обрывает разбор");
 Check(SmbiosMemory.Read().Count >= 0, "SMBIOS: таблица этого компьютера читается");
@@ -258,7 +258,7 @@ Check(SpdReader.DecodeDdr5(0x50, CorruptDdr5(spdCopy => (spdCopy[20], spdCopy[21
 
 // Сопоставление с SMBIOS, как на ноутбуке с распаянной памятью: у первого модуля микросхемы SPD нет,
 // паспорт по адресу 0x50 принадлежит второму модулю — порядок адресов и слотов не совпадает.
-ModuleMemoryModel CreateModule(string serial, string part) => new() { size_GB = 8, RAM_serialNumber = serial, RAM_partNumber = part };
+ModuleMemoryModel CreateModule(string serial, string part) => new() { Size_GB = 8, RAM_serialNumber = serial, RAM_partNumber = part };
 var soldered = CreateModule("00000000", "M471A1G44BB0-CWE");
 var socket = CreateModule("32FD2187", "M471A1K43EB1-CWE");
 var found0x50 = info! with { SerialNumber = "32FD2187", PartNumber = "M471A1K43EB1-CWE" };
