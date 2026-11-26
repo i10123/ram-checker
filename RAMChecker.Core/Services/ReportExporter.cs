@@ -1,6 +1,8 @@
 using System.IO;
-using System.Globalization;
-using MigraDoc.DocumentObjectModel.Shapes.Charts;
+using OxyPlot;
+using OxyPlot.Axes;
+using OxyPlot.Series;
+using OxyPlot.SkiaSharp;
 using System.Net;
 using System.Text;
 using MigraDoc.DocumentObjectModel;
@@ -9,34 +11,25 @@ using RAMChecker.Models;
 
 namespace RAMChecker.Services;
 
-// Формирует отчёт о проверке в одном из форматов: HTML (с картой памяти), PDF, CSV или Markdown.
+// Формирует отчёт о проверке в одном из форматов: HTML (с картой памяти), PDF или Markdown.
 public static class ReportExporter
 {
-    // Формат выбирается по расширению имени файла; неизвестное расширение даёт HTML.
+    // Формат выбирается по расширению имени файла.
     public static void Save(DiagnosticResult result, string path)
     {
         string extension = Path.GetExtension(path).ToLowerInvariant();
         if (extension == ".pdf")
             SavePdf(result, path);
+        else if (extension is ".md" or ".html" or ".htm")
+            File.WriteAllText(path, extension == ".md" ? CreateMarkdown(result) : CreateHtml(result), new UTF8Encoding(true));
         else
-            File.WriteAllText(path, extension switch { ".csv" => CreateCsv(result), ".md" => CreateMarkdown(result), _ => CreateHtml(result) }, new UTF8Encoding(true));
+            throw new NotSupportedException("Поддерживаемые форматы отчёта: HTML, PDF и Markdown.");
     }
 
     // Общая таблица «параметр — значение» для всех форматов.
     private static (string, string)[] Summary(DiagnosticResult result) => [("Дата", result.StartedText), ("Режим", result.Mode), ("Алгоритм", MemoryDiagnosticService.Algorithm),
         ("Длительность", result.DurationText), ("Объём проверки", result.MemoryText), ("Проверено полным проходом", result.CheckedText),
         ("Проходов", result.Passes.ToString()), ("Ошибок", result.ErrorCount.ToString())];
-
-    // Разделитель — точка с запятой: так CSV открывается в русской версии Excel.
-    private static string CreateCsv(DiagnosticResult result)
-    {
-        static string Quote(string text) => '"' + text.Replace("\"", "\"\"") + '"';
-        return string.Join("\r\n", Summary(result).Prepend(("Результат", result.StatusText)).Select(row => $"{Quote(row.Item1)};{Quote(row.Item2)}")
-            .Append("").Append("Смещение в буфере;Ожидалось;Прочитано;Шаг;Проход")
-            .Concat(result.Errors.Select(error => $"{error.OffsetText};{error.ExpectedText};{error.ActualText};{Quote(error.Stage)};{error.Pass}"))
-            .Append("").Append("Время (с);Физическая память (%);Выделенная память (%)")
-            .Concat(result.Samples.Select(s => FormattableString.Invariant($"{s.Seconds:F2};{s.PhysicalPercent:F2};{s.CommitPercent:F2}"))));
-    }
 
     private static string CreateMarkdown(DiagnosticResult result)
     {
@@ -50,8 +43,17 @@ public static class ReportExporter
         }
         if (result.Samples.Count > 0)
         {
-            lines.AddRange(["", "## Нагрузка памяти", "", "| Время, с | Физическая память, % | Выделенная память, % |", "|---:|---:|---:|"]);
-            lines.AddRange(result.Samples.Select(s => $"| {s.Seconds:0.##} | {s.PhysicalPercent:0.#} | {s.CommitPercent:0.#} |"));
+            lines.AddRange(["", "## Нагрузка памяти", "", "Для каждой секунды показан последний сохранённый замер. Между замерами значение повторяется.", "",
+                "| Секунда от старта | Физическая память, % | Выделенная память, % лимита |", "|---:|---:|---:|"]);
+            int next = 0;
+            LoadSample? latest = null;
+            long lastSecond = (long)Math.Max(result.ElapsedSeconds, result.Samples[^1].Seconds);
+            for (long second = 0; second <= lastSecond; second++)
+            {
+                while (next < result.Samples.Count && result.Samples[next].Seconds < second + 1)
+                    latest = result.Samples[next++];
+                lines.Add($"| {second} | {latest?.PhysicalPercent.ToString("0.#") ?? "—"} | {latest?.CommitPercent?.ToString("0.#") ?? "—"} |");
+            }
         }
         return string.Join("\n", lines);
     }
@@ -82,29 +84,15 @@ public static class ReportExporter
         foreach (var (name, value) in Summary(result))
             AddRow(summary, false, name, value);
         section.AddParagraph(result.Detail).Format.SpaceBefore = 10;
-        foreach (var (title, select, scale) in LoadCharts)
+        foreach (var (title, select, color) in LoadCharts)
         {
             Heading(title, 13);
-            if (!result.Samples.Any(s => select(s).HasValue))
-            {
+            section.LastParagraph!.Format.KeepWithNext = true;
+            var chart = RenderChart(result, select, color);
+            if (chart is null)
                 section.AddParagraph("Нет измерений");
-                continue;
-            }
-            var chart = section.AddChart(ChartType.Line);
-            chart.Width = "15cm";
-            chart.Height = "4cm";
-            chart.YAxis.MinimumScale = 0;
-            chart.YAxis.MaximumScale = scale ?? Math.Ceiling(result.Samples.Max(select)!.Value / 100) * 100;
-            chart.YAxis.MajorTickMark = TickMarkType.Outside;
-            var series = chart.SeriesCollection.AddSeries();
-            series.MarkerStyle = MarkerStyle.Circle;
-            var labels = chart.XValues.AddXSeries();
-            foreach (var sample in result.Samples)
-            {
-                if (select(sample) is double value) series.Add(value);
-                else series.AddBlank();
-                labels.Add(sample == result.Samples[0] || sample == result.Samples[^1] ? $"{sample.Seconds:0.#} с" : "");
-            }
+            else
+                section.AddImage("base64:" + chart).Width = "16cm";
         }
         Heading("Рекомендации", 13);
         section.AddParagraph(result.Recommendation);
@@ -128,31 +116,38 @@ public static class ReportExporter
         renderer.PdfDocument.Save(path);
     }
 
-    private static readonly (string Title, Func<LoadSample,double?> Value, double? Scale)[] LoadCharts =
+    private static readonly (string Title, Func<LoadSample, double?> Value, OxyColor Color)[] LoadCharts =
     [
-        ("Физическая память, %", s => s.PhysicalPercent, 100),
-        ("Выделенная память, % лимита", s => s.CommitPercent, 100)
+        ("Физическая память, %", s => s.PhysicalPercent, OxyColor.FromRgb(0, 102, 178)),
+        ("Выделенная память, % лимита", s => s.CommitPercent, OxyColor.FromRgb(0, 120, 105))
     ];
 
-    private static string LoadChartHtml(DiagnosticResult result, string title, Func<LoadSample,double?> select, double? scale)
+    private static string? RenderChart(DiagnosticResult result, Func<LoadSample, double?> select, OxyColor color)
     {
-        if (!result.Samples.Any(s => select(s).HasValue)) return $"<h3>{title}</h3><p>Нет измерений</p>";
         var samples = result.Samples;
-        double maximum = scale ?? Math.Ceiling(samples.Max(select)!.Value / 100) * 100;
-        var start = samples[0].Seconds;
-        var duration = Math.Max(0.001, samples[^1].Seconds - start);
-        var svg = new StringBuilder();
-        string? previous = null;
+        if (!samples.Any(s => select(s).HasValue)) return null;
+        var plot = new PlotModel { DefaultFont = "Segoe UI", DefaultFontSize = 16, Background = OxyColors.White,
+            PlotAreaBorderThickness = new OxyThickness(0) };
+        plot.Axes.Add(new LinearAxis { Position = AxisPosition.Left, Minimum = 0, Maximum = 100, MajorStep = 25,
+            Title = "Загрузка, %", MajorGridlineStyle = LineStyle.Solid, MinorTickSize = 0 });
+        plot.Axes.Add(new LinearAxis { Position = AxisPosition.Bottom, Title = "Время, с", Minimum = samples[0].Seconds,
+            Maximum = Math.Max(samples[0].Seconds + 1, samples[^1].Seconds), AxislineStyle = LineStyle.Solid,
+            MinorTickSize = 0 });
+        var series = new LineSeries { Color = color, StrokeThickness = 2, MarkerType = MarkerType.Circle, MarkerSize = 2.5,
+            MarkerFill = color };
         foreach (var sample in samples)
-        {
-            if (select(sample) is not double value) { previous = null; continue; }
-            string x = ((sample.Seconds - start) / duration * 590 + 5).ToString("0.##", CultureInfo.InvariantCulture);
-            string y = (104 - value * 100 / maximum).ToString("0.##", CultureInfo.InvariantCulture);
-            if (previous != null) svg.Append($"<path d='M{previous} L{x} {y}' stroke='#005fb8'/>");
-            svg.Append($"<circle cx='{x}' cy='{y}' r='2' fill='#005fb8'/>");
-            previous = $"{x} {y}";
-        }
-        return $"<h3>{title}</h3><svg viewBox='0 0 600 108' style='width:100%;background:#f3f6fa'>{svg}</svg><p>{start:0.#}–{samples[^1].Seconds:0.#} с · 0–{maximum:0}</p>";
+            series.Points.Add(new DataPoint(sample.Seconds, select(sample) ?? double.NaN));
+        plot.Series.Add(series);
+        using var image = new MemoryStream();
+        PngExporter.Export(plot, image, 1440, 420, 192);
+        return Convert.ToBase64String(image.ToArray());
+    }
+
+    private static string LoadChartHtml(DiagnosticResult result, string title, Func<LoadSample, double?> select, OxyColor color)
+    {
+        var chart = RenderChart(result, select, color);
+        return $"<h3>{title}</h3>" + (chart is null ? "<p>Нет измерений</p>"
+            : $"<img alt='{title}' style='display:block;width:100%;height:auto' src='data:image/png;base64,{chart}'>");
     }
 
     public static string CreateHtml(DiagnosticResult result)
@@ -171,7 +166,7 @@ public static class ReportExporter
             pre{background:#f5f5f5;padding:12px;white-space:pre-wrap}.legend span{margin-right:16px}</style>
             <h1>MemScope</h1><h2>{{Encode(result.StatusText)}}</h2><table>{{tableRows}}</table>
             <p>{{Encode(result.Detail)}}</p><h2>Рекомендации</h2><p>{{Encode(result.Recommendation)}}</p>
-            {{string.Concat(LoadCharts.Select(chart => LoadChartHtml(result, chart.Title, chart.Value, chart.Scale)))}}
+            {{string.Concat(LoadCharts.Select(chart => LoadChartHtml(result, chart.Title, chart.Value, chart.Color)))}}
             <h2>Карта буфера проверки</h2><svg width="704" height="176">{{mapCells}}</svg>
             <p class="legend"><span style="color:#0f7b0f">■ без ошибок</span><span style="color:#d13438">■ есть ошибки</span><span style="color:#8a8f96">■ не проверено</span></p>
             <p>Карта и смещения относятся к буферу программы, а не к физическим адресам и слотам: по ним нельзя определить

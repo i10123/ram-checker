@@ -16,8 +16,8 @@ public partial class ResultsView : UserControl
         if (((Button)sender).DataContext is not DiagnosticResult result)
             return;
         var dialog = new SaveFileDialog {
-            FileName = $"MemScope {result.Started:dd-MM-yyyy HH-mm-ss}.html",
-            Filter = "HTML|*.html|PDF|*.pdf|CSV|*.csv|Markdown|*.md"
+            FileName = $"MemScope {result.Started:dd-MM-yyyy HH-mm-ss}",
+            Filter = "HTML|*.html|PDF|*.pdf|Markdown|*.md"
         };
         if (dialog.ShowDialog() != true)
             return;

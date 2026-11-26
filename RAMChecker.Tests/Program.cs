@@ -152,6 +152,16 @@ File.WriteAllText(historyPath, "{ это не список записей");
 checkedHistory = storage.ReadHistory(out skippedRecords);
 Check(checkedHistory.Count == 0 && skippedRecords == -1 && File.ReadAllText(Path.Combine(storage.DirectoryPath, "history.bad.json")).StartsWith("{ это"),
     "файл истории, который не разбирается целиком, сохраняется рядом, история начинается заново");
+storage.Write("history.json", new[] {
+    new DiagnosticResult { Status = DiagnosticStatus.Stopped, Samples = [new(2, 10, null), new(1, 20, null)] },
+    new DiagnosticResult { Status = DiagnosticStatus.Completed, Samples = [new(0, 10, null), new(0, 20, null)] }
+});
+Check(storage.ReadHistory(out skippedRecords).Count == 1 && skippedRecords == 1,
+    "история принимает совпадающие отметки времени и отбрасывает обратный ход времени");
+var commitSnapshot = new MemorySnapshot(100, 25, 120, 150, null);
+Check(commitSnapshot.RemainingCommit == 30 && (commitSnapshot with { Committed = 180 }).RemainingCommit == 0
+    && (commitSnapshot with { CommitLimit = null }).RemainingCommit is null,
+    "остаток лимита выделения учитывает занятый объём и отсутствие данных");
 int notices = 0;
 early.PropertyChanged += (_, _) => notices++;
 early.ApplyProgress(new("", 1, 1, 0, TimeSpan.FromHours(25), 1, 0, null, null));
@@ -199,8 +209,10 @@ xmp[0] = 0x0C; xmp[1] = 0x4A; xmp[2] = 1;                    // XMP 2.0, про�
 const int xmpProfile = 9;
 xmp[xmpProfile] = 0xA3;                                      // 1,35 В
 xmp[xmpProfile + 3] = 5;                                    // tCK = 0,625 нс → DDR4-3200
-xmp[xmpProfile + 8] = 16; xmp[xmpProfile + 9] = 18; xmp[xmpProfile + 10] = 18;
-xmp[xmpProfile + 12] = 36; xmp[xmpProfile + 13] = 54;       // tRAS/tRC
+xmp[xmpProfile + 8] = 81; xmp[xmpProfile + 9] = 90; xmp[xmpProfile + 10] = 90;
+xmp[xmpProfile + 37] = unchecked((byte)-125);                // tAA = 81 × 125 − 125 пс
+xmp[xmpProfile + 11] = 0x10;
+xmp[xmpProfile + 12] = 180; xmp[xmpProfile + 13] = 14;       // tRAS/tRC
 var xmpProfileInfo = SpdReader.DecodeDdr4Xmp(xmp);
 Check(xmpProfileInfo is { SpeedMTs: 3200, CasLatency: 16, RasToCasDelay: 18, RowPrecharge: 18, RowActiveTime: 36, RowCycleTime: 54, Voltage: 1.35 },
     $"XMP 2.0: DDR4-3200 16-18-18-36, 1,35 В: {xmpProfileInfo}");
@@ -295,17 +307,23 @@ for (int i = 0; i < 12000; i++)
     series.RecordLoad(i * 0.25, new MemorySnapshot(100, 40, 20, 80, null));
 Check(series.Samples is { Count: <= 120 } && series.Samples.First().Seconds == 0 && series.Samples.Last().Seconds == 2999.75
     && series.Samples.Last().CommitPercent == 25, "график сохраняет начало и конец длительной проверки");
-Check(ReportExporter.CreateHtml(series).Contains("<circle") && !ReportExporter.CreateHtml(report).Contains("<circle"),
+Check(ReportExporter.CreateHtml(series).Contains("data:image/png;base64,") && !ReportExporter.CreateHtml(report).Contains("data:image/png;base64,"),
     "график использует только сохранённые измерения");
 var exportDirectory = Directory.CreateTempSubdirectory("MemScopeReport");
 try
 {
-    foreach (string extension in new[] { "csv", "pdf" })
+    foreach (string extension in new[] { "md", "pdf", "html" })
     {
         var path = Path.Combine(exportDirectory.FullName, "test." + extension);
         ReportExporter.Save(series, path);
         Check(new FileInfo(path).Length > 100, $"экспорт {extension} с графиками или исходными данными");
     }
+    var intervals = new DiagnosticResult { ElapsedSeconds = 4.5, Samples = [new(0, 10, null), new(0.25, 30, 50), new(3.1, 40, null)] };
+    var markdownPath = Path.Combine(exportDirectory.FullName, "intervals.md");
+    ReportExporter.Save(intervals, markdownPath);
+    var markdown = File.ReadAllText(markdownPath);
+    Check(markdown.Contains(string.Join("\n", "| 0 | 30 | 50 |", "| 1 | 30 | 50 |", "| 2 | 30 | 50 |",
+        "| 3 | 40 | — |", "| 4 | 40 | — |")), "Markdown показывает по одной строке на секунду до конца проверки");
 }
 finally { exportDirectory.Delete(true); }
 
