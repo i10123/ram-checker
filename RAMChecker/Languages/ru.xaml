@@ -15,10 +15,6 @@
     <sys:String x:Key="UiAvailable">Доступно</sys:String>
     <sys:String x:Key="UiModules">Модули</sys:String>
     <sys:String x:Key="UiLiveMonitoring">Мониторинг в реальном времени</sys:String>
-    <sys:String x:Key="UiMemoryClockMclk">Частота контроллера памяти (MCLK)</sys:String>
-    <sys:String x:Key="UiDramSupplyVoltage">Напряжение питания DRAM</sys:String>
-    <sys:String x:Key="UiModuleTemperaturesSmbus">Температура модулей (SMBus)</sys:String>
-    <sys:String x:Key="UiADashIndicatesAnUnavailableSensorReading">Прочерк означает, что показание датчика недоступно.</sys:String>
     <sys:String x:Key="UiMemoryModule">Модуль памяти</sys:String>
     <sys:String x:Key="UiReadingModuleInformation">Чтение сведений о модулях…</sys:String>
     <sys:String x:Key="UiMemoryAllocation">Распределение памяти</sys:String>
@@ -43,6 +39,8 @@
     <sys:String x:Key="UiMemoryUsage">Загрузка памяти</sys:String>
     <sys:String x:Key="UiPhysicalMemory">Физическая память, %</sys:String>
     <sys:String x:Key="UiCommittedMemoryOfLimit">Выделенная память, % лимита</sys:String>
+    <sys:String x:Key="UiGraphLoadAxis">Загрузка, %</sys:String>
+    <sys:String x:Key="UiGraphTimeAxis">Время</sys:String>
     <sys:String x:Key="UiNoResultsYetStartATestOnTheTestingPage">Проверок пока нет. Запустите тест на вкладке «Тестирование».</sys:String>
     <sys:String x:Key="UiDuration">Длительность</sys:String>
     <sys:String x:Key="UiSize">Объём</sys:String>

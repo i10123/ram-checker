@@ -7,6 +7,60 @@
              xmlns:local="clr-namespace:RAMChecker.Views"
              xmlns:vm="clr-namespace:RAMChecker.ViewModels"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:MainViewModel}">
+    <UserControl.Resources>
+        <!-- Узкая полоса не отвлекает от результата, но остаётся заметной при наведении. -->
+        <Style TargetType="ScrollBar">
+            <Setter Property="Width" Value="10" />
+            <Setter Property="MinWidth" Value="10" />
+            <Setter Property="Background" Value="Transparent" />
+            <Setter Property="Margin" Value="4,4,2,4" />
+            <Setter Property="RenderTransform"><Setter.Value><TranslateTransform X="12" /></Setter.Value></Setter>
+            <Setter Property="Template">
+                <Setter.Value>
+                    <ControlTemplate TargetType="ScrollBar">
+                        <Border Background="#14FFFFFF" CornerRadius="5" Padding="1">
+                            <Track x:Name="PART_Track" Orientation="{TemplateBinding Orientation}" IsDirectionReversed="True">
+                                <Track.DecreaseRepeatButton>
+                                    <RepeatButton x:Name="DecreasePage" Command="{x:Static ScrollBar.PageUpCommand}" Focusable="False" Background="Transparent">
+                                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.DecreaseRepeatButton>
+                                <Track.Thumb>
+                                    <Thumb x:Name="Thumb" MinHeight="36">
+                                        <Thumb.Template>
+                                            <ControlTemplate TargetType="Thumb">
+                                                <Border x:Name="ThumbBorder" Background="#78FFFFFF" CornerRadius="4" />
+                                                <ControlTemplate.Triggers>
+                                                    <Trigger Property="IsMouseOver" Value="True"><Setter TargetName="ThumbBorder" Property="Background" Value="#A8FFFFFF" /></Trigger>
+                                                    <Trigger Property="IsDragging" Value="True"><Setter TargetName="ThumbBorder" Property="Background" Value="#D6FFFFFF" /></Trigger>
+                                                </ControlTemplate.Triggers>
+                                            </ControlTemplate>
+                                        </Thumb.Template>
+                                    </Thumb>
+                                </Track.Thumb>
+                                <Track.IncreaseRepeatButton>
+                                    <RepeatButton x:Name="IncreasePage" Command="{x:Static ScrollBar.PageDownCommand}" Focusable="False" Background="Transparent">
+                                        <RepeatButton.Template><ControlTemplate TargetType="RepeatButton"><Border Background="Transparent" /></ControlTemplate></RepeatButton.Template>
+                                    </RepeatButton>
+                                </Track.IncreaseRepeatButton>
+                            </Track>
+                        </Border>
+                        <ControlTemplate.Triggers>
+                            <Trigger Property="Orientation" Value="Horizontal">
+                                <Setter Property="Width" Value="Auto" />
+                                <Setter Property="Height" Value="10" />
+                                <Setter TargetName="PART_Track" Property="IsDirectionReversed" Value="False" />
+                                <Setter TargetName="DecreasePage" Property="Command" Value="{x:Static ScrollBar.PageLeftCommand}" />
+                                <Setter TargetName="IncreasePage" Property="Command" Value="{x:Static ScrollBar.PageRightCommand}" />
+                                <Setter TargetName="Thumb" Property="MinHeight" Value="0" />
+                                <Setter TargetName="Thumb" Property="MinWidth" Value="36" />
+                            </Trigger>
+                        </ControlTemplate.Triggers>
+                    </ControlTemplate>
+                </Setter.Value>
+            </Setter>
+        </Style>
+    </UserControl.Resources>
     <Grid Margin="16,24,16,8">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
@@ -22,7 +76,8 @@
             <Grid>
                 <TextBlock Text="{DynamicResource UiNoResultsYetStartATestOnTheTestingPage}" Style="{StaticResource Caption}"
                            Visibility="{Binding HasNoHistory, Converter={StaticResource BoolToVisibility}}" />
-                <ListBox ItemsSource="{Binding History}" SelectedItem="{Binding SelectedResult}" Background="Transparent">
+                <ListBox ItemsSource="{Binding History}" SelectedItem="{Binding SelectedResult}" Background="Transparent" Padding="0,0,16,0"
+                         ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
                             <Grid Margin="0,4">
@@ -55,7 +110,7 @@
 
         <Border Grid.Row="1" Grid.Column="1" Style="{StaticResource Card}"
                 Visibility="{Binding HasSelectedResult,Converter={StaticResource BoolToVisibility}}">
-            <ScrollViewer VerticalScrollBarVisibility="Auto"><DockPanel DataContext="{Binding SelectedResult}">
+            <ScrollViewer VerticalScrollBarVisibility="Auto"><DockPanel DataContext="{Binding SelectedResult}" Margin="0,0,16,0">
                 <StackPanel DockPanel.Dock="Top">
                     <TextBlock Text="{ui:UiText StatusText}" FontSize="22" FontWeight="SemiBold" />
                     <TextBlock Text="{ui:UiText Recommendation}" TextWrapping="Wrap" Margin="0,4,0,16" />
@@ -89,11 +144,9 @@
                     <TextBlock Text="{DynamicResource UiTestBufferMap}" Style="{StaticResource Caption}"/>
                     <ItemsControl ItemsSource="{Binding Cells}" Style="{StaticResource MemoryMap}" Margin="0,4,0,8"/>
                     <TextBlock Text="{DynamicResource UiPhysicalMemory}" Style="{StaticResource Caption}"/>
-                    <local:SampleChart Samples="{Binding Samples}" Height="56"/>
+                    <local:SampleChart Samples="{Binding Samples}" Height="72"/>
                     <TextBlock Text="{DynamicResource UiCommittedMemoryOfLimit}" Style="{StaticResource Caption}"/>
-                    <local:SampleChart Samples="{Binding Samples}" ShowCommit="True" Height="56"/>
-                    <TextBlock Text="{DynamicResource UiMemoryClockMclk}" Style="{StaticResource Caption}"/>
-                    <local:SampleChart Samples="{Binding Samples}" ShowClock="True" Height="56"/>
+                    <local:SampleChart Samples="{Binding Samples}" ShowCommit="True" Height="72"/>
                     <TextBlock Text="{ui:UiText SampleRange}" Style="{StaticResource Caption}" Margin="0,0,0,10"/>
                     <ItemsControl ItemsSource="{Binding ConfigurationModules}">
                         <ItemsControl.ItemTemplate>

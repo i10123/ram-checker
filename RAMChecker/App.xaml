@@ -69,15 +69,20 @@
             </Grid>
         </DataTemplate>
 
-        <!-- График загрузки памяти (данные — OverviewViewModel): сетка, заливка под линией и сама линия. -->
+        <!-- Графики мониторинга используют общую шкалу: 0–100 % и интервал последних измерений. -->
         <DataTemplate x:Key="LoadChart">
             <Viewbox Stretch="Fill">
                 <Canvas Width="600" Height="160" ClipToBounds="True">
-                    <Line X1="0" Y1="1" X2="600" Y2="1" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
-                    <Line X1="0" Y1="40" X2="600" Y2="40" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
-                    <Line X1="0" Y1="80" X2="600" Y2="80" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
-                    <Line X1="0" Y1="120" X2="600" Y2="120" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
-                    <Line X1="0" Y1="159" X2="600" Y2="159" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                    <TextBlock Canvas.Left="58" Canvas.Top="2" Text="{DynamicResource UiGraphLoadAxis}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Canvas.Right="8" Canvas.Top="0" Text="{Binding LoadText}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource AccentFillColorDefaultBrush}" />
+                    <Line X1="58" Y1="34" X2="58" Y2="136" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                    <Line X1="58" Y1="34" X2="600" Y2="34" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
+                    <Line X1="58" Y1="85" X2="600" Y2="85" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
+                    <Line X1="58" Y1="136" X2="600" Y2="136" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                    <TextBlock Canvas.Left="20" Canvas.Top="24" Text="100" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Canvas.Left="28" Canvas.Top="75" Text="50" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Canvas.Left="36" Canvas.Top="126" Text="0" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Canvas.Left="300" Canvas.Top="143" Text="{DynamicResource UiGraphTimeAxis}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
                     <Polygon Points="{Binding UsageArea}" Fill="{DynamicResource AccentFillColorDefaultBrush}">
                         <Polygon.OpacityMask>
                             <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
@@ -87,6 +92,33 @@
                         </Polygon.OpacityMask>
                     </Polygon>
                     <Polyline Points="{Binding UsagePoints}" Stroke="{DynamicResource AccentFillColorDefaultBrush}"
+                              StrokeThickness="2" StrokeLineJoin="Round" />
+                </Canvas>
+            </Viewbox>
+        </DataTemplate>
+
+        <DataTemplate x:Key="CommitChart">
+            <Viewbox Stretch="Fill">
+                <Canvas Width="600" Height="160" ClipToBounds="True">
+                    <TextBlock Canvas.Left="58" Canvas.Top="2" Text="{DynamicResource UiGraphLoadAxis}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Canvas.Right="8" Canvas.Top="0" Text="{Binding CommitPercentText}" FontSize="24" FontWeight="SemiBold" Foreground="{DynamicResource AccentFillColorDefaultBrush}" />
+                    <Line X1="58" Y1="34" X2="58" Y2="136" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                    <Line X1="58" Y1="34" X2="600" Y2="34" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
+                    <Line X1="58" Y1="85" X2="600" Y2="85" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" StrokeDashArray="3 5" />
+                    <Line X1="58" Y1="136" X2="600" Y2="136" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}" />
+                    <TextBlock Canvas.Left="20" Canvas.Top="24" Text="100" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Canvas.Left="28" Canvas.Top="75" Text="50" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Canvas.Left="36" Canvas.Top="126" Text="0" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <TextBlock Canvas.Left="300" Canvas.Top="143" Text="{DynamicResource UiGraphTimeAxis}" FontSize="12" Foreground="{DynamicResource TextFillColorSecondaryBrush}" />
+                    <Polygon Points="{Binding CommitArea}" Fill="{DynamicResource AccentFillColorDefaultBrush}">
+                        <Polygon.OpacityMask>
+                            <LinearGradientBrush StartPoint="0,0" EndPoint="0,1">
+                                <GradientStop Color="#70000000" Offset="0" />
+                                <GradientStop Color="#08000000" Offset="1" />
+                            </LinearGradientBrush>
+                        </Polygon.OpacityMask>
+                    </Polygon>
+                    <Polyline Points="{Binding CommitPoints}" Stroke="{DynamicResource AccentFillColorDefaultBrush}"
                               StrokeThickness="2" StrokeLineJoin="Round" />
                 </Canvas>
             </Viewbox>

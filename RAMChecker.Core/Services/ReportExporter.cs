@@ -34,8 +34,8 @@ public static class ReportExporter
         return string.Join("\r\n", Summary(result).Prepend(("Результат", result.StatusText)).Select(row => $"{Quote(row.Item1)};{Quote(row.Item2)}")
             .Append("").Append("Смещение в буфере;Ожидалось;Прочитано;Шаг;Проход")
             .Concat(result.Errors.Select(error => $"{error.OffsetText};{error.ExpectedText};{error.ActualText};{Quote(error.Stage)};{error.Pass}"))
-            .Append("").Append("Время (с);Физическая память (%);Выделенная память (%);MCLK (MHz)")
-            .Concat(result.Samples.Select(s => FormattableString.Invariant($"{s.Seconds:F2};{s.PhysicalPercent:F2};{s.CommitPercent:F2};{s.ClockMHz:F2}"))));
+            .Append("").Append("Время (с);Физическая память (%);Выделенная память (%)")
+            .Concat(result.Samples.Select(s => FormattableString.Invariant($"{s.Seconds:F2};{s.PhysicalPercent:F2};{s.CommitPercent:F2}"))));
     }
 
     private static string CreateMarkdown(DiagnosticResult result)
@@ -50,8 +50,8 @@ public static class ReportExporter
         }
         if (result.Samples.Count > 0)
         {
-            lines.AddRange(["", "## Нагрузка памяти", "", "| Время, с | Физическая память, % | Выделенная память, % | MCLK, MHz |", "|---:|---:|---:|---:|"]);
-            lines.AddRange(result.Samples.Select(s => $"| {s.Seconds:0.##} | {s.PhysicalPercent:0.#} | {s.CommitPercent:0.#} | {s.ClockMHz:0.##} |"));
+            lines.AddRange(["", "## Нагрузка памяти", "", "| Время, с | Физическая память, % | Выделенная память, % |", "|---:|---:|---:|"]);
+            lines.AddRange(result.Samples.Select(s => $"| {s.Seconds:0.##} | {s.PhysicalPercent:0.#} | {s.CommitPercent:0.#} |"));
         }
         return string.Join("\n", lines);
     }
@@ -131,8 +131,7 @@ public static class ReportExporter
     private static readonly (string Title, Func<LoadSample,double?> Value, double? Scale)[] LoadCharts =
     [
         ("Физическая память, %", s => s.PhysicalPercent, 100),
-        ("Выделенная память, % лимита", s => s.CommitPercent, 100),
-        ("Частота MCLK, MHz", s => s.ClockMHz, null)
+        ("Выделенная память, % лимита", s => s.CommitPercent, 100)
     ];
 
     private static string LoadChartHtml(DiagnosticResult result, string title, Func<LoadSample,double?> select, double? scale)

@@ -53,22 +53,15 @@
                     <TextBlock Text="{DynamicResource UiLiveMonitoring}" Style="{StaticResource SectionTitle}"/>
                     <UniformGrid Columns="2">
                         <StackPanel>
-                            <TextBlock Text="{DynamicResource UiMemoryClockMclk}" Style="{StaticResource Caption}"/>
-                            <TextBlock Text="{Binding ClockText}" Style="{StaticResource Number}"/>
-                            <Viewbox Height="54" Stretch="Fill"><Canvas Width="600" Height="160">
-                                <Polyline Points="{Binding ClockPoints}" StrokeThickness="3" Stroke="{DynamicResource AccentFillColorDefaultBrush}"/>
-                            </Canvas></Viewbox>
-                            <TextBlock Text="{Binding ClockRange}" Style="{StaticResource Caption}"/>
+                            <TextBlock Text="{DynamicResource UiPhysicalMemory}" Style="{StaticResource Caption}"/>
+                            <ContentControl Height="150" Content="{Binding}" ContentTemplate="{StaticResource LoadChart}"/>
                         </StackPanel>
-                        <StackPanel Margin="20,0,0,0">
-                            <TextBlock Text="{DynamicResource UiDramSupplyVoltage}" Style="{StaticResource Caption}"/>
-                            <TextBlock Text="{Binding VoltageText}" Style="{StaticResource Number}"/>
-                            <TextBlock Text="{DynamicResource UiModuleTemperaturesSmbus}" Style="{StaticResource Caption}" Margin="0,8,0,0"/>
-                            <TextBlock Text="—" Visibility="{Binding NoTemperatures, Converter={StaticResource BoolToVisibility}}"/>
-                            <ItemsControl ItemsSource="{Binding Temperatures}" ItemTemplate="{StaticResource TableRow}"/>
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource UiCommittedMemoryOfLimit}" Style="{StaticResource Caption}"/>
+                            <ContentControl Height="150" Content="{Binding}" ContentTemplate="{StaticResource CommitChart}"/>
+                            <TextBlock Text="{ui:UiText CommitText}" Style="{StaticResource Caption}" HorizontalAlignment="Right" Margin="0,4,0,0"/>
                         </StackPanel>
                     </UniformGrid>
-                    <TextBlock Text="{DynamicResource UiADashIndicatesAnUnavailableSensorReading}" Style="{StaticResource Caption}"/>
                 </StackPanel>
             </Border>
 

@@ -38,7 +38,7 @@ public record MemoryCell(int Index, byte State, long BlockBytes)
     public static MemoryCell[] From(byte[] map, long bufferBytes) => [.. map.Select((state, cellIndex) => new MemoryCell(cellIndex, state, bufferBytes / map.Length))];
 }
 
-public record LoadSample(double Seconds, double PhysicalPercent, double? CommitPercent, double? ClockMHz = null);
+public record LoadSample(double Seconds, double PhysicalPercent, double? CommitPercent);
 
 public record ModuleLine(string Slot, string Title, string Specs);
 
@@ -58,7 +58,7 @@ public class DiagnosticResult : INotifyPropertyChanged
     public string Configuration { get; set; } = "";
     public List<LoadSample> Samples { get; set; } = [];
     private long observation, stride = 1;
-    public void RecordLoad(double seconds, MemorySnapshot snapshot, double? clockMHz = null)
+    public void RecordLoad(double seconds, MemorySnapshot snapshot)
     {
         // Keep both endpoints across a long run. When full, halve the historical resolution.
         var points = new List<LoadSample>(Samples);
@@ -70,7 +70,7 @@ public class DiagnosticResult : INotifyPropertyChanged
             stride *= 2;
         }
         points.Add(new(seconds, snapshot.LoadPercent, snapshot.CommitLimit is > 0 && snapshot.Committed is ulong used
-            ? Math.Clamp(100d * used / snapshot.CommitLimit.Value, 0, 100) : null, clockMHz));
+            ? Math.Clamp(100d * used / snapshot.CommitLimit.Value, 0, 100) : null));
         Samples = points;
         observation++;
         PropertyChanged?.Invoke(this, new(nameof(Samples)));

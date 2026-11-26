@@ -74,7 +74,7 @@ public class TestingViewModel : ObservableObject
     public void Tick()
     {
         if (active != null && main.Overview.Memory is { } snapshot)
-            active.RecordLoad(sampleTime.Elapsed.TotalSeconds, snapshot, Overview.RecentClockMHz);
+            active.RecordLoad(sampleTime.Elapsed.TotalSeconds, snapshot);
         if (active is not null && active.ElapsedSeconds - lastSaved >= 10)
         {
             lastSaved = (long)active.ElapsedSeconds;
@@ -119,7 +119,7 @@ public class TestingViewModel : ObservableObject
         };
         (lastSaved, LastResult) = (0, null);
         sampleTime.Restart();
-        if (main.Overview.Memory is { } first) session.RecordLoad(0, first, Overview.RecentClockMHz);
+        if (main.Overview.Memory is { } first) session.RecordLoad(0, first);
         main.AddResult(session);
 
         // Сервис сообщает прогресс из фонового потока, Progress переносит его в поток интерфейса.

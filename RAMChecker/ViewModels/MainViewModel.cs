@@ -177,6 +177,5 @@ public class MainViewModel : ObservableObject
         timer.Stop();
         await Test.StopAsync();
         await loading;
-        await Overview.CloseSensorsAsync();
     }
 }

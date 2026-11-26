@@ -3,13 +3,18 @@ using System.Text;
 
 namespace RAMChecker.Services;
 
+public record XmpProfile(int SpeedMTs, int CasLatency, int RasToCasDelay, int RowPrecharge, int RowActiveTime, int RowCycleTime, double? Voltage)
+{
+    public string Timings => $"{CasLatency}-{RasToCasDelay}-{RowPrecharge}-{RowActiveTime}";
+}
+
 public record SpdInfo(byte Address, int NominalSpeed, int CasLatency, int RasToCasDelay, int RowPrecharge, int RowActiveTime, int RowCycleTime, int SizeGB)
 {
     // Серийный номер и модель планки — по ним паспорт сопоставляется с модулем из SMBIOS.
     public bool IsDdr5 { get; init; }
-    public bool HasTemperatureSensor { get; init; }
     public string SerialNumber { get; init; } = "";
     public string PartNumber { get; init; } = "";
+    public XmpProfile? XmpProfile1 { get; init; }
 }
 
 // Читает паспорт планок DDR4 и DDR5 из микросхемы SPD по шине SMBus (стандарт JEDEC): тайминги, модель и серийный номер.
@@ -77,43 +82,19 @@ public sealed class SpdReader : IDisposable
         {
             SetPage(1);
             foreach (int resultIndex in ddr4ResultIndexes)
-                if (ReadBytes(result[resultIndex].Address, 325 - 256, 24) is { } identityBytes)
-                    result[resultIndex] = result[resultIndex] with { SerialNumber = Convert.ToHexString(identityBytes, 0, 4), PartNumber = Encoding.ASCII.GetString(identityBytes, 4, 20).Trim(' ', '\0') };
+            {
+                var info = result[resultIndex];
+                if (ReadBytes(info.Address, 325 - 256, 24) is { } identityBytes)
+                    info = info with { SerialNumber = Convert.ToHexString(identityBytes, 0, 4), PartNumber = Encoding.ASCII.GetString(identityBytes, 4, 20).Trim(' ', '\0') };
+                // Вторая половина второй страницы DDR4 (байты 384–511) содержит XMP 2.0.
+                if (ReadBytes(info.Address, 128, 128) is { } xmpBytes)
+                    info = info with { XmpProfile1 = DecodeDdr4Xmp(xmpBytes) };
+                result[resultIndex] = info;
+            }
             SetPage(0); // Другие программы и BIOS ждут, что выбрана первая страница.
         }
         return result;
     });
-
-    public double?[] ReadTemperatures(IReadOnlyList<SpdInfo> modules) => RunWithBusLock(() =>
-        modules.Select(ReadTemperature).ToArray());
-
-    private double? ReadTemperature(SpdInfo info)
-    {
-        if (!info.HasTemperatureSensor)
-            return null;
-        if (info.IsDdr5)
-        {
-            if (ReadBytes(info.Address, 26, 1) is not [var config] || (config & 1) != 0 ||
-                ReadBytes(info.Address, 49, 2) is not { } bytes)
-                return null;
-            return DecodeTemperature(BinaryPrimitives.ReadUInt16LittleEndian(bytes), true);
-        }
-        // JC42 ambient register is transmitted MSB first in an SMBus word transaction.
-        var word = new long[1];
-        int address = 0x18 + (info.Address & 7);
-        if (!smbusDriver.Execute("ioctl_smbus_xfer", [address, SmbusRead, 1, 3], word) ||
-            (BinaryPrimitives.ReverseEndianness((ushort)word[0]) & 0x100) != 0)
-            return null; // JC42 shutdown: the ambient register may contain an old sample.
-        if (!smbusDriver.Execute("ioctl_smbus_xfer", [address, SmbusRead, 5, 3], word))
-            return null;
-        return DecodeTemperature(BinaryPrimitives.ReverseEndianness((ushort)word[0]), false);
-    }
-
-    public static double DecodeTemperature(ushort raw, bool spd5118)
-    {
-        int signed = (raw & 0x0fff) - (raw & 0x1000);
-        return spd5118 ? (signed >> 2) * 0.25 : signed / 16.0;
-    }
 
     private byte[]? ReadBytes(byte address, int firstRegister, int byteCount)
     {
@@ -148,7 +129,7 @@ public sealed class SpdReader : IDisposable
         }
         finally { WriteRegister(address, 11, 0); } // Другие программы ждут, что выбрана первая страница.
         return DecodeDdr5(address, spdBytes) is { } info
-            ? info with { IsDdr5 = true, HasTemperatureSensor = ReadBytes(address, 5, 1) is [var capability] && (capability & 2) != 0, SerialNumber = Convert.ToHexString(spdBytes, 517, 4), PartNumber = Encoding.ASCII.GetString(spdBytes, 521, 30).Trim(' ', '\0') }
+            ? info with { IsDdr5 = true, SerialNumber = Convert.ToHexString(spdBytes, 517, 4), PartNumber = Encoding.ASCII.GetString(spdBytes, 521, 30).Trim(' ', '\0') }
             : null;
     }
 
@@ -187,7 +168,26 @@ public sealed class SpdReader : IDisposable
         // Скорости DDR4 идут с шагом 133⅓ MT/s, а tCK в паспорте округлён до пикосекунды: 0,938 нс дало бы 2132,
         // а не 2133. Поэтому скорость округляется до ближайшего шага, а дробная часть отбрасывается (2666,67 → 2666).
         int nominalSpeed = (int)(Math.Round(2_000_000d / clockPeriod * 3 / 400) * 400 / 3);
-        return new(address, nominalSpeed, casLatency, rasToCasDelay, rowPrecharge, rowActiveTime, rowCycleTime, sizeGB) { HasTemperatureSensor = (spd[14] & 0x80) != 0 };
+        return new(address, nominalSpeed, casLatency, rasToCasDelay, rowPrecharge, rowActiveTime, rowCycleTime, sizeGB);
+    }
+
+    // XMP 2.0 занимает байты 384–511 SPD DDR4. Для компактности показываем только
+    // первый профиль; применение профиля BIOS подтверждается отдельно по SMBIOS.
+    public static XmpProfile? DecodeDdr4Xmp(byte[] xmp)
+    {
+        const int profile = 9;
+        if (xmp.Length < 128 || xmp[0] != 0x0C || xmp[1] != 0x4A || (xmp[2] & 1) == 0)
+            return null;
+        int clockPeriod = xmp[profile + 3] * 125 + (sbyte)xmp[profile + 38];
+        int casLatency = xmp[profile + 8], rasToCasDelay = xmp[profile + 9], rowPrecharge = xmp[profile + 10];
+        int rowActiveTime = (xmp[profile + 11] & 0x0F) << 8 | xmp[profile + 12];
+        int rowCycleTime = (xmp[profile + 11] >> 4) << 8 | xmp[profile + 13];
+        if (clockPeriod is < 200 or > 1500 || new[] { casLatency, rasToCasDelay, rowPrecharge, rowActiveTime, rowCycleTime }.Min() <= 0)
+            return null;
+        int speed = (int)(Math.Round(2_000_000d / clockPeriod * 3 / 400) * 400 / 3);
+        int centivolts = (xmp[profile] & 0x7F) + ((xmp[profile] & 0x80) != 0 ? 100 : 0);
+        return new(speed, casLatency, rasToCasDelay, rowPrecharge, rowActiveTime, rowCycleTime,
+            centivolts is > 0 and < 300 ? centivolts / 100d : null);
     }
 
     // Паспорт DDR5 (стандарт JESD400-5): 1024 байта, но для таймингов достаточно первых 512. Время хранится

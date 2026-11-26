@@ -15,10 +15,6 @@
     <sys:String x:Key="UiAvailable">Available</sys:String>
     <sys:String x:Key="UiModules">Modules</sys:String>
     <sys:String x:Key="UiLiveMonitoring">Live monitoring</sys:String>
-    <sys:String x:Key="UiMemoryClockMclk">Memory clock (MCLK)</sys:String>
-    <sys:String x:Key="UiDramSupplyVoltage">DRAM supply voltage</sys:String>
-    <sys:String x:Key="UiModuleTemperaturesSmbus">Module temperatures (SMBus)</sys:String>
-    <sys:String x:Key="UiADashIndicatesAnUnavailableSensorReading">A dash indicates an unavailable sensor reading.</sys:String>
     <sys:String x:Key="UiMemoryModule">Memory module</sys:String>
     <sys:String x:Key="UiReadingModuleInformation">Reading module information…</sys:String>
     <sys:String x:Key="UiMemoryAllocation">Memory allocation</sys:String>
@@ -43,6 +39,8 @@
     <sys:String x:Key="UiMemoryUsage">Memory usage</sys:String>
     <sys:String x:Key="UiPhysicalMemory">Physical memory, %</sys:String>
     <sys:String x:Key="UiCommittedMemoryOfLimit">Committed memory, % of limit</sys:String>
+    <sys:String x:Key="UiGraphLoadAxis">Usage, %</sys:String>
+    <sys:String x:Key="UiGraphTimeAxis">Time</sys:String>
     <sys:String x:Key="UiNoResultsYetStartATestOnTheTestingPage">No results yet. Start a test on the Testing page.</sys:String>
     <sys:String x:Key="UiDuration">Duration</sys:String>
     <sys:String x:Key="UiSize">Size</sys:String>

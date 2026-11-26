@@ -120,16 +120,9 @@
                             </StackPanel>
                             <StackPanel Grid.Column="1">
                                 <TextBlock Text="{DynamicResource UiPhysicalMemory}" Style="{StaticResource Caption}"/>
-                                <ContentControl Height="64" Content="{Binding Overview}" ContentTemplate="{StaticResource LoadChart}"/>
+                                <ContentControl Height="132" Content="{Binding Overview}" ContentTemplate="{StaticResource LoadChart}"/>
                                 <TextBlock Text="{DynamicResource UiCommittedMemoryOfLimit}" Style="{StaticResource Caption}"/>
-                                <Viewbox Height="64" Stretch="Fill"><Canvas Width="600" Height="160">
-                                    <Polyline Points="{Binding Overview.CommitPoints}" StrokeThickness="3" Stroke="{DynamicResource AccentFillColorDefaultBrush}"/>
-                                </Canvas></Viewbox>
-                                <TextBlock Text="{DynamicResource UiMemoryClockMclk}" Style="{StaticResource Caption}"/>
-                                <TextBlock Text="{Binding Overview.ClockText}"/>
-                                <Viewbox Height="50" Stretch="Fill"><Canvas Width="600" Height="160">
-                                    <Polyline Points="{Binding Overview.ClockPoints}" StrokeThickness="3" Stroke="{DynamicResource AccentFillColorDefaultBrush}"/>
-                                </Canvas></Viewbox>
+                                <ContentControl Height="132" Content="{Binding Overview}" ContentTemplate="{StaticResource CommitChart}"/>
                             </StackPanel>
                         </Grid>
                     </Border>

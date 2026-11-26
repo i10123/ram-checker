@@ -194,6 +194,17 @@ Check(SpdReader.DecodeDdr4(0x50, CorruptDdr4(spdCopy => (spdCopy[20], spdCopy[21
 Check(SpdReader.DecodeDdr4(0x50, spd[..100]) is null, "слишком короткий паспорт отклоняется");
 // tCK = 0,938 нс (8 шагов по 0,125 нс минус 62 пс) — это DDR4-2133, хотя 2 000 000 / 938 = 2132.
 Check(SpdReader.DecodeDdr4(0x50, CorruptDdr4(spdCopy => (spdCopy[18], spdCopy[125]) = (8, unchecked((byte)-62))))?.NominalSpeed == 2133, "скорость округляется до стандартной: 2133, а не 2132");
+var xmp = new byte[128];
+xmp[0] = 0x0C; xmp[1] = 0x4A; xmp[2] = 1;                    // XMP 2.0, профиль 1
+const int xmpProfile = 9;
+xmp[xmpProfile] = 0xA3;                                      // 1,35 В
+xmp[xmpProfile + 3] = 5;                                    // tCK = 0,625 нс → DDR4-3200
+xmp[xmpProfile + 8] = 16; xmp[xmpProfile + 9] = 18; xmp[xmpProfile + 10] = 18;
+xmp[xmpProfile + 12] = 36; xmp[xmpProfile + 13] = 54;       // tRAS/tRC
+var xmpProfileInfo = SpdReader.DecodeDdr4Xmp(xmp);
+Check(xmpProfileInfo is { SpeedMTs: 3200, CasLatency: 16, RasToCasDelay: 18, RowPrecharge: 18, RowActiveTime: 36, RowCycleTime: 54, Voltage: 1.35 },
+    $"XMP 2.0: DDR4-3200 16-18-18-36, 1,35 В: {xmpProfileInfo}");
+Check(SpdReader.DecodeDdr4Xmp(new byte[128]) is null, "XMP без сигнатуры и профиля не принимается");
 
 // --- SMBIOS ---
 // Таблица из двух записей: планка DDR4 на 8 ГБ с тремя строками и конец таблицы. Первая запись — другого типа и пропускается.
@@ -279,12 +290,9 @@ partial.Map.AsSpan().Fill(Ok);
 partial.Map[0] = Error; // красный блок мог пройти проход целиком, а мог быть остановлен на ошибке
 Check(partial.CheckedText == "не менее 510 МБ", $"с ошибками в первом проходе объём указан как нижняя граница: {partial.CheckedText}");
 
-Check(SpdReader.DecodeTemperature(0xE198, false) == 25.5 &&
-      SpdReader.DecodeTemperature(0x1ff8, false) == -0.5 &&
-      SpdReader.DecodeTemperature(0x1ffc, true) == -0.25, "SMBus: знак, флаги и дробная часть температуры");
 var series = new DiagnosticResult();
 for (int i = 0; i < 12000; i++)
-    series.RecordLoad(i * 0.25, new MemorySnapshot(100, 40, 20, 80, null), 1500.5);
+    series.RecordLoad(i * 0.25, new MemorySnapshot(100, 40, 20, 80, null));
 Check(series.Samples is { Count: <= 120 } && series.Samples.First().Seconds == 0 && series.Samples.Last().Seconds == 2999.75
     && series.Samples.Last().CommitPercent == 25, "график сохраняет начало и конец длительной проверки");
 Check(ReportExporter.CreateHtml(series).Contains("<circle") && !ReportExporter.CreateHtml(report).Contains("<circle"),

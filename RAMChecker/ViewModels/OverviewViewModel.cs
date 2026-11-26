@@ -14,24 +14,11 @@ public record BarItem(string Name, string Value, double Width);
 
 public class OverviewViewModel : ObservableObject
 {
+    private const double ChartLeft = 58, ChartRight = 600, ChartTop = 34, ChartBottom = 136;
     private readonly MainViewModel main;
     private readonly Queue<double> loadSamples = new();
-    private SpdReader? sensorBus;
-    private List<SpdInfo> sensors = [];
-    private RyzenMemoryClock? clock;
-    private BoardVoltage? power;
-    private Task polling = Task.CompletedTask;
-    private readonly Queue<double> clocks = new();
-    public PointCollection ClockPoints { get; private set; } = [];
-    private long clockTimestamp;
-    private double? clockMHz;
-    public double? RecentClockMHz => Environment.TickCount64 - clockTimestamp <= 2 * main.IntervalMs ? clockMHz : null;
-    public string ClockRange { get; private set; } = "";
-    public string ClockText { get; private set; } = "—";
-    public string VoltageText { get; private set; } = "—";
-    public bool NoTemperatures => Temperatures.Count == 0;
-    public List<KeyValuePair<string, string>> Temperatures { get; private set; } = [];
     public PointCollection CommitPoints { get; private set; } = [];
+    public PointCollection CommitArea { get; private set; } = [];
     private readonly Queue<double> commits = new();
     private string wheaErrors = "…";
 
@@ -51,6 +38,7 @@ public class OverviewViewModel : ObservableObject
     public string UsedText => Memory is null ? "—" : $"{MemorySnapshot.Format(Memory.Used)} · {Memory.LoadPercent:0}%";
     public string LoadText => Memory is null ? "—" : $"{Memory.LoadPercent:0}%";
     public string CommitText => Memory is { Committed: ulong committedBytes, CommitLimit: ulong commitLimitBytes } ? $"{MemorySnapshot.Format(committedBytes)} из {MemorySnapshot.Format(commitLimitBytes)}" : "—";
+    public string CommitPercentText => Memory is { Committed: ulong committedBytes, CommitLimit: > 0 } ? $"{100d * committedBytes / Memory.CommitLimit.Value:0}%" : "—";
     public GridLength CommitUsed => new(Memory?.Committed ?? 0, GridUnitType.Star);
     public GridLength CommitFree => new(Memory is { Committed: ulong committedBytes, CommitLimit: ulong commitLimitBytes } && commitLimitBytes > committedBytes ? commitLimitBytes - committedBytes : 1, GridUnitType.Star);
     public List<KeyValuePair<string, string>> MemoryRows { get; private set; } = [];
@@ -82,8 +70,9 @@ public class OverviewViewModel : ObservableObject
     [
         new("Производитель", module.RAM_maker), new("Модель", module.RAM_partNumber), new("Серийный номер", module.RAM_serialNumber),
         new("Тип", $"{module.RAM_type} {module.RAM_formFactor}"), new("Объём", $"{module.Size_GB} ГБ"), new("Слот", module.RAM_slot),
-        new("Настроенная скорость (SMBIOS)", module.RAM_speed), new("Номинальная частота", module.RAM_nominalSpeed),
-        new("Тайминги CL-tRCD-tRP-tRAS", module.RAM_timings), new("tRC", module.RAM_tRC),
+        new("Настроенная скорость (SMBIOS)", module.RAM_speed), new("Номинальная частота JEDEC (SPD)", module.RAM_nominalSpeed),
+        new("Тайминги JEDEC CL-tRCD-tRP-tRAS", module.RAM_timings), new("tRC JEDEC", module.RAM_tRC),
+        new("XMP профиль 1", module.RAM_xmp),
         new("Напряжение (SMBIOS)", module.RAM_voltage)
     ];
 
@@ -92,14 +81,8 @@ public class OverviewViewModel : ObservableObject
         try
         {
             var modules = await Task.Run(SmbiosMemory.Read);
-            await Task.Run(() =>
-            {
-                try { power = new BoardVoltage(); }
-                catch (Exception) { /* Optional WMI provider unavailable. */ }
-                if (NeedsAdministrator) return;
-                try { clock = new RyzenMemoryClock(); } catch (Exception) { }
-                ReadSpd(modules);
-            });
+            if (!NeedsAdministrator)
+                await Task.Run(() => ReadSpd(modules));
             foreach (var module in modules)
                 ModulesMemory.Add(module);
             SelectedModule = ModulesMemory.FirstOrDefault();
@@ -114,9 +97,8 @@ public class OverviewViewModel : ObservableObject
     {
         try
         {
-            sensorBus = new SpdReader();
+            using var sensorBus = new SpdReader();
             var spdInfos = sensorBus.ReadAll();
-            sensors = spdInfos;
             var pairs = SpdMatcher.Match(modules, spdInfos, out string matchMethod);
             SpdStatus = spdInfos.Count == 0 ? "Паспорт SPD DDR4 или DDR5 не найден на шине SMBus."
                 : pairs.Count == 0 ? $"Паспорт SPD прочитан у {spdInfos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
@@ -128,6 +110,13 @@ public class OverviewViewModel : ObservableObject
                 module.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
                 module.RAM_timings = $"{info.CasLatency}-{info.RasToCasDelay}-{info.RowPrecharge}-{info.RowActiveTime}";
                 module.RAM_tRC = info.RowCycleTime.ToString();
+                if (info.XmpProfile1 is { } xmp)
+                {
+                    string voltage = xmp.Voltage is double value ? $" · {value:0.00} В" : "";
+                    string status = module.ConfiguredSpeedMTs == xmp.SpeedMTs ? " · вероятно активен" : "";
+                    module.RAM_xmp = $"{xmp.SpeedMTs} MT/s ({xmp.SpeedMTs / 2} МГц) · {xmp.Timings} · tRC {xmp.RowCycleTime}{voltage}{status}";
+                }
+                else module.RAM_xmp = "Нет профиля XMP";
             }
         }
         catch (DllNotFoundException) { SpdStatus = "Для таймингов установите драйвер PawnIO."; }
@@ -157,54 +146,11 @@ public class OverviewViewModel : ObservableObject
         catch (Exception) { return ModuleMemoryModel.NoData; }
     }
 
-    private async Task PollSensorsAsync()
-    {
-        var sample = await Task.Run(() =>
-        {
-            double? mhz = null, volts = null;
-            double?[] temperatures = new double?[sensors.Count];
-            try { mhz = clock?.ReadMHz(); } catch (Exception) { }
-            try { volts = power?.ReadVolts(); } catch (Exception) { }
-            try { if (sensorBus != null && sensors.Count > 0) temperatures = sensorBus.ReadTemperatures(sensors); }
-            catch (Exception ex) when (ex is TimeoutException or InvalidOperationException) { }
-            return (mhz, volts, temperatures);
-        });
-        clockMHz = sample.mhz;
-        clockTimestamp = Environment.TickCount64;
-        ClockText = sample.mhz is double mhz ? $"{mhz:0.##} MHz" : "—";
-        VoltageText = sample.volts is double volts ? $"{volts:0.000} V · {power?.Source}" : "—";
-        Temperatures = sensors.Select((sensor, i) => new KeyValuePair<string, string>(
-            $"SPD 0x{sensor.Address:X2}  {sensor.PartNumber}", sample.temperatures[i] is double t ? $"{t:0.##} °C" : "—")).ToList();
-        if (sample.mhz is double value)
-        {
-            clocks.Enqueue(value);
-            if (clocks.Count > 60) clocks.Dequeue();
-        }
-        else clocks.Clear();
-        if (clocks.Count > 0)
-        {
-            double low = clocks.Min() - 1, range = clocks.Max() + 1 - low;
-            ClockRange = $"{low:0.#}–{low + range:0.#} MHz";
-            ClockPoints = [.. clocks.Select((x,i) => new Point(i * 600d / 59, 158 - (x-low) / range * 156))];
-        }
-        else { ClockPoints = []; ClockRange = ""; }
-        NotifyChanged(nameof(ClockText), nameof(VoltageText), nameof(Temperatures), nameof(NoTemperatures), nameof(ClockPoints), nameof(ClockRange));
-    }
-
-    public async Task CloseSensorsAsync()
-    {
-        await polling;
-        sensorBus?.Dispose();
-        clock?.Dispose();
-    }
-
     public void Tick()
     {
         try
         {
             Memory = MemoryMonitor.Read();
-            if (!Loading && polling.IsCompleted)
-                polling = PollSensorsAsync();
             if (Memory.Committed is ulong used && Memory.CommitLimit is > 0)
             {
                 commits.Enqueue(100.0 * used / Memory.CommitLimit.Value);
@@ -215,13 +161,12 @@ public class OverviewViewModel : ObservableObject
             if (loadSamples.Count > 60)
                 loadSamples.Dequeue();
             UpdateMemoryRows(Memory);
-            if (main.SelectedPage == 1)
-                UpdateChart();
+            UpdateChart();
         }
         catch (Exception ex) {
             main.Notice = "Мониторинг недоступен: " + ex.Message;
         }
-        NotifyChanged(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText), nameof(CommitText), nameof(CommitUsed), nameof(CommitFree));
+        NotifyChanged(nameof(TotalText), nameof(UsedText), nameof(AvailableText), nameof(LoadText), nameof(CommitText), nameof(CommitPercentText), nameof(CommitUsed), nameof(CommitFree));
     }
 
     // График последних 60 измерений
@@ -229,14 +174,19 @@ public class OverviewViewModel : ObservableObject
     {
         if (loadSamples.Count == 0)
             return;
-        var chartPoints = loadSamples.Select((loadPercent, sampleIndex) => new Point((60 - loadSamples.Count + sampleIndex) * 600 / 59d, 160 - loadPercent * 1.6)).ToList();
+        double ChartX(int count, int index) => ChartLeft + (60 - count + index) * (ChartRight - ChartLeft) / 59d;
+        double ChartY(double percent) => ChartBottom - percent * (ChartBottom - ChartTop) / 100d;
+        var chartPoints = loadSamples.Select((loadPercent, sampleIndex) => new Point(ChartX(loadSamples.Count, sampleIndex), ChartY(loadPercent))).ToList();
         UsagePoints = [.. chartPoints];
-        UsageArea = [.. chartPoints.Append(new(600, 160)).Append(new(chartPoints[0].X, 160))];
+        UsageArea = [.. chartPoints.Append(new(ChartRight, ChartBottom)).Append(new(chartPoints[0].X, ChartBottom))];
         UsagePoints.Freeze();
         UsageArea.Freeze();
-        CommitPoints = [.. commits.Select((v,i) => new Point((60 - commits.Count + i)*600d/59, 160 - v*1.6))];
-        NotifyChanged(nameof(CommitPoints));
-        NotifyChanged(nameof(UsagePoints), nameof(UsageArea));
+        var commitPoints = commits.Select((value, sampleIndex) => new Point(ChartX(commits.Count, sampleIndex), ChartY(value))).ToList();
+        CommitPoints = [.. commitPoints];
+        CommitArea = [.. commitPoints.Append(new(ChartRight, ChartBottom)).Append(new(commitPoints.Count > 0 ? commitPoints[0].X : ChartRight, ChartBottom))];
+        CommitPoints.Freeze();
+        CommitArea.Freeze();
+        NotifyChanged(nameof(CommitPoints), nameof(CommitArea), nameof(UsagePoints), nameof(UsageArea));
     }
 
     private void UpdateMemoryRows(MemorySnapshot snapshot)
