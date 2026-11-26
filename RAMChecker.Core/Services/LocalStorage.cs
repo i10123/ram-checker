@@ -61,5 +61,6 @@ public class LocalStorage(string? customDirectory = null)
     private static bool IsValid(DiagnosticResult record) => record is { Mode: not null, Detail: not null, Configuration: not null, Errors: not null,
             Map.Length: MemoryDiagnosticService.MapSize, RequestedBytes: >= 0, ErrorCount: >= 0, Passes: >= 0, ElapsedSeconds: >= 0 and < 1e9 }
         && record.Samples is { Count: <= 120 } && record.Samples.All(s => s is { Seconds: >= 0 and < 1e9, PhysicalPercent: >= 0 and <= 100, CommitPercent: null or (>= 0 and <= 100) })
+        && record.Samples.Zip(record.Samples.Skip(1)).All(pair => pair.First.Seconds <= pair.Second.Seconds)
         && Enum.IsDefined(record.Status) && record.Map.All(cellState => cellState <= MemoryDiagnosticService.Waiting) && !record.Errors.Contains(null!);
 }

@@ -80,26 +80,56 @@
                          ScrollViewer.HorizontalScrollBarVisibility="Disabled">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <Grid Margin="0,4">
+                            <Grid Margin="3,7">
                                 <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition Width="Auto" />
-                                    <ColumnDefinition />
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition/>
                                 </Grid.ColumnDefinitions>
-                                <Border x:Name="Stripe" Width="4" CornerRadius="2" Margin="0,0,10,0" Background="{DynamicResource SystemFillColorCautionBrush}" />
-                                <TextBlock Grid.Column="1" Style="{StaticResource StatusIcon}" Margin="0,2,10,0" />
-                                <StackPanel Grid.Column="2">
-                                    <TextBlock Text="{ui:UiText StatusText}" FontWeight="SemiBold" />
-                                    <TextBlock Text="{Binding StartedText}" Style="{StaticResource Caption}" />
-                                    <TextBlock Text="{ui:UiText Description}" Style="{StaticResource Caption}" />
+                                <Canvas Width="24" Height="24" VerticalAlignment="Top" Margin="0,0,10,0">
+                                    <Path x:Name="ResultIcon" Stroke="#FFD481" StrokeThickness="2"
+                                          StrokeStartLineCap="Round" StrokeEndLineCap="Round" StrokeLineJoin="Round"
+                                          Data="M12,3 L22,20 H2 Z M12,9 V13 M12,16 V17"/>
+                                </Canvas>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="{ui:UiText StatusText}" FontSize="15" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{Binding StartedText}" Opacity="0.85" Margin="0,2,0,0" TextWrapping="Wrap"/>
+                                    <TextBlock Text="{ui:UiText Mode}" FontWeight="SemiBold" Margin="0,8,0,4" TextWrapping="Wrap"/>
+                                    <Grid>
+                                        <Grid.ColumnDefinitions>
+                                            <ColumnDefinition Width="Auto"/>
+                                            <ColumnDefinition/>
+                                        </Grid.ColumnDefinitions>
+                                        <StackPanel Margin="0,0,16,0">
+                                            <TextBlock Text="{DynamicResource UiDuration}" FontSize="12" Opacity="0.85"/>
+                                            <TextBlock Text="{Binding DurationText}" Typography.NumeralAlignment="Tabular"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="1">
+                                            <TextBlock Text="{DynamicResource UiSize}" FontSize="12" Opacity="0.85"/>
+                                            <TextBlock Text="{ui:UiText MemoryText}"/>
+                                        </StackPanel>
+                                    </Grid>
                                 </StackPanel>
                             </Grid>
                             <DataTemplate.Triggers>
+                                <DataTrigger Binding="{Binding Status}" Value="Stopped">
+                                    <Setter TargetName="ResultIcon" Property="Data" Value="M8,2 H16 L22,8 V16 L16,22 H8 L2,16 V8 Z M8,12 H16"/>
+                                    <Setter TargetName="ResultIcon" Property="Stroke" Value="#FFD481"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="Running">
+                                    <Setter TargetName="ResultIcon" Property="Data" Value="M7,3 L21,12 L7,21 Z"/>
+                                    <Setter TargetName="ResultIcon" Property="Stroke" Value="#ACDAFF"/>
+                                </DataTrigger>
                                 <DataTrigger Binding="{Binding Level}" Value="1">
-                                    <Setter TargetName="Stripe" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                                    <Setter TargetName="ResultIcon" Property="Data" Value="M3,12 L9,18 L21,5"/>
+                                    <Setter TargetName="ResultIcon" Property="Stroke" Value="#94ECC3"/>
+                                </DataTrigger>
+                                <DataTrigger Binding="{Binding Status}" Value="Failed">
+                                    <Setter TargetName="ResultIcon" Property="Data" Value="M5,5 L19,19 M19,5 L5,19"/>
+                                    <Setter TargetName="ResultIcon" Property="Stroke" Value="#FFB5B5"/>
                                 </DataTrigger>
                                 <DataTrigger Binding="{Binding Level}" Value="2">
-                                    <Setter TargetName="Stripe" Property="Background" Value="{DynamicResource SystemFillColorCriticalBrush}" />
+                                    <Setter TargetName="ResultIcon" Property="Data" Value="M5,5 L19,19 M19,5 L5,19"/>
+                                    <Setter TargetName="ResultIcon" Property="Stroke" Value="#FFB5B5"/>
                                 </DataTrigger>
                             </DataTemplate.Triggers>
                         </DataTemplate>
@@ -143,11 +173,18 @@
                     <TextBlock Text="{ui:UiText Detail}" Style="{StaticResource Caption}" Margin="0,0,0,8" />
                     <TextBlock Text="{DynamicResource UiTestBufferMap}" Style="{StaticResource Caption}"/>
                     <ItemsControl ItemsSource="{Binding Cells}" Style="{StaticResource MemoryMap}" Margin="0,4,0,8"/>
-                    <TextBlock Text="{DynamicResource UiPhysicalMemory}" Style="{StaticResource Caption}"/>
-                    <local:SampleChart Samples="{Binding Samples}" Height="72"/>
-                    <TextBlock Text="{DynamicResource UiCommittedMemoryOfLimit}" Style="{StaticResource Caption}"/>
-                    <local:SampleChart Samples="{Binding Samples}" ShowCommit="True" Height="72"/>
-                    <TextBlock Text="{ui:UiText SampleRange}" Style="{StaticResource Caption}" Margin="0,0,0,10"/>
+                    <Border Background="#280E1420" CornerRadius="10" Padding="16,12" Margin="0,4,0,10">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource UiPhysicalMemory}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <local:SampleChart Samples="{Binding Samples}" Height="168" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Border>
+                    <Border Background="#280E1420" CornerRadius="10" Padding="16,12" Margin="0,4,0,10">
+                        <StackPanel>
+                            <TextBlock Text="{DynamicResource UiCommittedMemoryOfLimit}" FontSize="17" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                            <local:SampleChart Samples="{Binding Samples}" ShowCommit="True" Height="168" Margin="0,6,0,0"/>
+                        </StackPanel>
+                    </Border>
                     <ItemsControl ItemsSource="{Binding ConfigurationModules}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>

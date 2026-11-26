@@ -74,7 +74,6 @@ public class DiagnosticResult : INotifyPropertyChanged
         Samples = points;
         observation++;
         PropertyChanged?.Invoke(this, new(nameof(Samples)));
-        PropertyChanged?.Invoke(this, new(nameof(SampleRange)));
     }
     public List<MemoryError> Errors { get; set; } = [];
     public byte[] Map { get; set; } = new byte[MemoryDiagnosticService.MapSize];
@@ -94,7 +93,6 @@ public class DiagnosticResult : INotifyPropertyChanged
     [JsonIgnore] public bool HasErrors => ErrorCount > 0;
     // Уровень для цвета в списке: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки.
     [JsonIgnore] public int Level => ErrorCount > 0 ? 2 : Status == DiagnosticStatus.Completed ? 1 : 0;
-    [JsonIgnore] public string SampleRange => Samples.Count == 0 ? "Нет измерений" : $"{Samples[0].Seconds:0.#}–{Samples[^1].Seconds:0.#} s";
     [JsonIgnore] public MemoryCell[] Cells => MemoryCell.From(Map, RequestedBytes);
     // Строка конфигурации «слот: производитель модель, объём, скорость, тайминги» делится на три части для карточки планки.
     [JsonIgnore] public ModuleLine[] ConfigurationModules => [.. Configuration.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>
