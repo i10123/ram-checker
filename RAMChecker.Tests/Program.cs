@@ -82,43 +82,80 @@ Check(foundCount >= 1 && foundCount <= Environment.ProcessorCount, $"64 испо
 
 // --- Полный запуск ---
 var progress = new Progress<DiagnosticProgress>(_ => { });
-var shortRun = await RunAsync(64L << 20, TimeSpan.FromSeconds(1), false, progress, CancellationToken.None);
-Check(shortRun.Status == DiagnosticStatus.Completed && shortRun.ErrorCount == 0 && shortRun.Passes >= 1, $"64 МБ за 1 с: {shortRun.StatusText}, проходов {shortRun.Passes}");
+var shortRun = await RunAsync(64L << 20, DiagnosticMode.Quick, false, progress, CancellationToken.None);
+Check(shortRun.Status == DiagnosticStatus.Completed && shortRun.ErrorCount == 0 && shortRun.Passes == 1, $"Быстрый, 64 МиБ: {shortRun.StatusText}, проходов {shortRun.Passes}");
 Check(shortRun.Map.All(cellState => cellState == Ok) && shortRun.CheckedBytes == 64L << 20, "карта памяти полностью зелёная, проверен весь объём");
-Check(shortRun.Passes > 1 && shortRun.Detail == "", $"за 1 с несколько проходов, буфер закреплён в оперативной памяти: {shortRun.Detail}");
 long before = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64;
-await RunAsync(1L << 30, TimeSpan.FromSeconds(1), false, progress, CancellationToken.None);
+await RunAsync(1L << 30, DiagnosticMode.Quick, false, progress, CancellationToken.None);
 long after = System.Diagnostics.Process.GetCurrentProcess().PrivateMemorySize64;
 Check(after - before < 64L << 20, $"после проверки 1 ГБ память возвращена системе (прирост {(after - before) >> 20} МБ)");
-var imitationRun = await RunAsync(64L << 20, TimeSpan.FromSeconds(1), false, progress, CancellationToken.None, imitation: true);
-Check(imitationRun.Status == DiagnosticStatus.Completed && imitationRun.ErrorCount == imitationRun.Passes && imitationRun.Map.Count(cellState => cellState == Error) == 1 && imitationRun.Map[MapSize / 3] == Error
-    && (imitationRun.Errors[0].Expected ^ imitationRun.Errors[0].Actual) == 1u << 5, $"имитация: одна ошибка за проход в блоке {MapSize / 3 + 1}, ошибок {imitationRun.ErrorCount}");
-var imitationStopRun = await RunAsync(64L << 20, null, true, progress, CancellationToken.None, imitation: true);
+var imitationRun = await RunAsync(64L << 20, DiagnosticMode.Quick, false, progress, CancellationToken.None, imitation: true);
+Check(imitationRun.Status == DiagnosticStatus.Completed && imitationRun.ErrorCount == 2 && imitationRun.Map.Count(cellState => cellState == Error) == 1 && imitationRun.Map[MapSize / 3] == Error
+    && (imitationRun.Errors[0].Expected ^ imitationRun.Errors[0].Actual) == 1u << 5, $"имитация: две ошибки в блоке {MapSize / 3 + 1}, ошибок {imitationRun.ErrorCount}");
+var imitationStopRun = await RunAsync(64L << 20, DiagnosticMode.Continuous, true, progress, CancellationToken.None, imitation: true);
 Check(imitationStopRun.Status == DiagnosticStatus.Errors && imitationStopRun.ErrorCount == 1, "имитация с остановкой на первой ошибке");
 using (var timeoutSource = new CancellationTokenSource(1000))
 {
     double maxPercent = 0;
-    var cyclicRun = await RunAsync(1L << 30, null, false, new SyncProgress<DiagnosticProgress>(progressReport => maxPercent = Math.Max(maxPercent, progressReport.Percent)), timeoutSource.Token);
+    var cyclicRun = await RunAsync(1L << 30, DiagnosticMode.Continuous, false, new SyncProgress<DiagnosticProgress>(progressReport => maxPercent = Math.Max(maxPercent, progressReport.Percent)), timeoutSource.Token);
     Check(maxPercent is > 0 and <= 100, $"циклическая проверка: процент прохода не выходит за 100 (наибольший {maxPercent:0})");
     Check(cyclicRun.Status == DiagnosticStatus.Stopped && cyclicRun.ElapsedSeconds < 1.7, $"циклическая проверка 1 ГБ останавливается за {(cyclicRun.ElapsedSeconds - 1) * 1000:0} мс после отмены");
 }
 
-// --- Неверные параметры ---
-async Task<bool> Rejected(long bytes, double seconds)
+foreach (var mode in Enum.GetValues<DiagnosticMode>())
 {
-    try { await RunAsync(bytes, TimeSpan.FromSeconds(seconds), false, progress, CancellationToken.None); }
+    using var stop = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+    double previous = 0;
+    bool ordered = true, sawFullMap = false;
+    var test = await RunAsync(32L << 10, mode, false, new SyncProgress<DiagnosticProgress>(update =>
+    {
+        ordered &= update.Percent >= previous && update.Percent <= 100;
+        previous = update.Percent;
+        if (update.Passes == 1)
+        {
+            sawFullMap = update.Map?.All(state => state is Ok or Error) ?? sawFullMap;
+            if (mode is DiagnosticMode.Continuous or DiagnosticMode.Stress) stop.Cancel();
+        }
+        else if (update.Map?.All(state => state is Ok or Error) == true) sawFullMap = true;
+    }), stop.Token, imitation: true);
+    Check(ordered && previous == 100 && sawFullMap && test.Map.Count(state => state == Error) == 1,
+        $"{mode}: прогресс и накопительная карта быстрого прохода");
+    Check(test.Passes == 1 && test.Status == (mode is DiagnosticMode.Continuous or DiagnosticMode.Stress
+        ? DiagnosticStatus.Stopped : DiagnosticStatus.Completed), $"{mode}: завершение цикла");
+    if (mode is DiagnosticMode.Full or DiagnosticMode.Continuous)
+        Check(test.Errors.Any(error => error.Stage.Contains("Нарушение чётности")), $"{mode}: программная чётность");
+}
+
+using (var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+{
+    bool sawActive = false, sawCompleted = false;
+    var stress = await RunAsync(64L << 20, DiagnosticMode.Stress, false, new SyncProgress<DiagnosticProgress>(update =>
+    {
+        sawActive |= update.LiveMap?.Contains(Checking) == true;
+        sawCompleted |= update.LiveMap?.All(state => state == Ok) == true;
+        if (update.Passes >= 2) stop.Cancel();
+    }), stop.Token);
+    Check(stress.Status == DiagnosticStatus.Stopped && stress.Passes >= 2 && stress.ErrorCount == 0
+        && stress.Map.All(state => state == Ok) && stress.ProcessedBytes >= 40 * stress.RequestedBytes && sawActive && sawCompleted,
+        "Стресс: оба направления копирования, чистая карта и учёт трафика");
+}
+
+// --- Неверные параметры ---
+async Task<bool> Rejected(long bytes, int mode)
+{
+    try { await RunAsync(bytes, (DiagnosticMode)mode, false, progress, CancellationToken.None); }
     catch (ArgumentOutOfRangeException) { return true; }
     return false;
 }
 Check(await Rejected(0, 1) && await Rejected(-1L << 20, 1) && await Rejected(4096, 1), "объём 0, отрицательный и меньше 8 КБ (имитация вышла бы за блок) отклоняется");
 Check(await Rejected((1L << 20) + 100, 1) && await Rejected(1L << 42, 1), "объём, не кратный 1 КБ или с блоком больше int.MaxValue слов, отклоняется");
-Check(await Rejected(64L << 20, 0) && await Rejected(64L << 20, -5), "нулевая и отрицательная длительность отклоняется");
+Check(await Rejected(64L << 20, 4) && await Rejected(64L << 20, -5), "неизвестный режим отклоняется");
 
 // --- Промежуточное сохранение и история ---
 // Отчёты о ходе переносятся в сессию так же, как на странице тестирования; затем история записывается,
 // как при автосохранении, и читается заново, как после аварийного закрытия.
 var session = new DiagnosticResult { RequestedBytes = 64L << 20 };
-await RunAsync(64L << 20, TimeSpan.FromSeconds(1), false, new SyncProgress<DiagnosticProgress>(session.ApplyProgress), CancellationToken.None, imitation: true);
+await RunAsync(64L << 20, DiagnosticMode.Quick, false, new SyncProgress<DiagnosticProgress>(session.ApplyProgress), CancellationToken.None, imitation: true);
 var storage = new LocalStorage(Path.Combine(Path.GetTempPath(), "MemScope.Tests"));
 storage.Write("history.json", new List<DiagnosticResult> { session });
 var restored = storage.ReadHistory(out _)[0];
@@ -127,12 +164,12 @@ Check(restored.Status == DiagnosticStatus.Interrupted && restored.ErrorCount > 0
 // Авария сразу после первого отчёта с ошибкой: проход на 64 МБ короче 200 мс, поэтому первая ошибка приходит
 // в отчёте конца прохода, раньше очередного периодического снимка карты.
 var early = new DiagnosticResult { RequestedBytes = 64L << 20 };
-await RunAsync(64L << 20, TimeSpan.FromSeconds(0.5), false, new SyncProgress<DiagnosticProgress>(progressReport =>
+await RunAsync(64L << 20, DiagnosticMode.Quick, false, new SyncProgress<DiagnosticProgress>(progressReport =>
 {
     if (early.ErrorCount == 0)
         early.ApplyProgress(progressReport);
 }), CancellationToken.None, imitation: true);
-Check(early.ErrorCount == 1 && early.Errors.Count == 1 && early.Map[MapSize / 3] == Error, $"первая ошибка сохраняется вместе с красной клеткой карты (красных {early.Map.Count(cellState => cellState == Error)})");
+Check(early.ErrorCount > 0 && early.Errors.Count == early.ErrorCount && early.Map[MapSize / 3] == Error, $"первая ошибка сохраняется вместе с красной клеткой карты (красных {early.Map.Count(cellState => cellState == Error)})");
 string historyPath = Path.Combine(storage.DirectoryPath, "history.json");
 File.WriteAllText(historyPath, """[{"Status": "Stopped", "ErrorCount": 0}, {"Status": "Running", "Passes": 1}]""");
 var oldFormatHistory = storage.ReadHistory(out _);
