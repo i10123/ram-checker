@@ -84,6 +84,7 @@ public class UiLanguage : INotifyPropertyChanged
         ["Большая нагрузка"] = "High system load",
         ["Недостаточно памяти"] = "Insufficient memory",
         ["Свободной памяти стало меньше, чем нужно для проверки с резервом для Windows. Уменьшите объём."] = "There is no longer enough free memory to keep the Windows reserve. Reduce the test size.",
+        ["Отчёт сохранён"] = "Report saved",
         ["Не удалось сохранить отчёт"] = "Could not save the report",
         ["Непредвиденная ошибка"] = "Unexpected error",
     };

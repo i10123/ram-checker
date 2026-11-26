@@ -1,4 +1,6 @@
+using System.Buffers.Binary;
 using System.ComponentModel;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
 using RAMChecker.Models;
@@ -11,36 +13,56 @@ namespace RAMChecker.Services;
 public static partial class SmbiosMemory
 {
     private const uint Signature = 0x52534D42; // 'RSMB' — «сырая» таблица SMBIOS
+    private const int HeaderLength = 8;
     private const int MemoryDevice = 17, EndOfTable = 127;
 
     public static List<ModuleMemoryModel> Read()
     {
         // Первый вызов без буфера возвращает нужный размер, второй — заполняет буфер.
-        int tableSize = (int)GetSystemFirmwareTable(Signature, 0, null, 0);
+        uint tableSize = GetSystemFirmwareTable(Signature, 0, null, 0);
         if (tableSize == 0)
             throw new Win32Exception(Marshal.GetLastPInvokeError());
+        if (tableSize < HeaderLength || tableSize > Array.MaxLength)
+            throw new InvalidDataException("Недопустимый размер таблицы SMBIOS.");
+
         var rawTable = new byte[tableSize];
-        if (GetSystemFirmwareTable(Signature, 0, rawTable, (uint)tableSize) == 0)
+        uint bytesWritten = GetSystemFirmwareTable(Signature, 0, rawTable, tableSize);
+        if (bytesWritten == 0)
             throw new Win32Exception(Marshal.GetLastPInvokeError());
-        return Parse(rawTable);
+        if (bytesWritten < HeaderLength || bytesWritten > tableSize)
+            throw new InvalidDataException("Не удалось получить таблицу SMBIOS целиком.");
+
+        return Parse(rawTable.AsSpan(0, (int)bytesWritten));
     }
 
     // raw — структура Windows RawSMBIOSData: 8 байт заголовка (в байтах 4–7 длина таблицы) и сама таблица.
-    public static List<ModuleMemoryModel> Parse(byte[] rawTable)
+    public static List<ModuleMemoryModel> Parse(byte[] rawTable) => Parse(rawTable.AsSpan());
+
+    private static List<ModuleMemoryModel> Parse(ReadOnlySpan<byte> rawTable)
     {
         var modules = new List<ModuleMemoryModel>();
-        int tableEnd = (int)Math.Min(8L + BitConverter.ToUInt32(rawTable, 4), rawTable.Length);
-        for (int recordStart = 8; recordStart + 4 <= tableEnd && rawTable[recordStart] != EndOfTable;)
+        if (rawTable.Length < HeaderLength)
+            return modules;
+        uint tableLength = BinaryPrimitives.ReadUInt32LittleEndian(rawTable[4..]);
+        if (tableLength > rawTable.Length - HeaderLength)
+            return modules;
+
+        int tableEnd = HeaderLength + (int)tableLength;
+        for (int recordStart = HeaderLength; tableEnd - recordStart >= 4 && rawTable[recordStart] != EndOfTable;)
         {
-            int formattedLength = rawTable[recordStart + 1], stringsStart = recordStart + formattedLength;
-            if (formattedLength < 4 || stringsStart > tableEnd)
+            int formattedLength = rawTable[recordStart + 1];
+            if (formattedLength < 4 || formattedLength > tableEnd - recordStart - 2)
                 break; // испорченная запись: дальше таблицу разобрать нельзя
             // Набор строк заканчивается двумя нулями подряд; без строк это просто два нулевых байта.
+            int stringsStart = recordStart + formattedLength;
             int stringsEnd = stringsStart;
-            while (stringsEnd + 1 < tableEnd && (rawTable[stringsEnd] != 0 || rawTable[stringsEnd + 1] != 0))
+            while (stringsEnd < tableEnd - 1 && (rawTable[stringsEnd] != 0 || rawTable[stringsEnd + 1] != 0))
                 stringsEnd++;
+            if (stringsEnd == tableEnd - 1)
+                break;
+
             if (rawTable[recordStart] == MemoryDevice && formattedLength >= 0x1B
-                && ParseMemoryDevice(rawTable[recordStart..stringsStart], Encoding.ASCII.GetString(rawTable, stringsStart, Math.Min(stringsEnd + 1, tableEnd) - stringsStart).Split('\0'), modules.Count + 1) is { } parsedModule)
+                && ParseMemoryDevice(rawTable[recordStart..stringsStart], rawTable[stringsStart..stringsEnd], modules.Count + 1) is { } parsedModule)
                 modules.Add(parsedModule);
             recordStart = stringsEnd + 2;
         }
@@ -49,44 +71,56 @@ public static partial class SmbiosMemory
 
     // Смещения полей записи типа 17 — по спецификации SMBIOS. Короткая запись (старая версия BIOS) не содержит
     // последних полей, они остаются нулевыми. Пустой слот имеет размер 0 и в список не попадает.
-    private static ModuleMemoryModel? ParseMemoryDevice(byte[] record, string[] recordStrings, int moduleNumber)
+    private static ModuleMemoryModel? ParseMemoryDevice(ReadOnlySpan<byte> record, ReadOnlySpan<byte> recordStrings, int moduleNumber)
     {
-        ushort ReadWord(int offset) => offset + 2 <= record.Length ? BitConverter.ToUInt16(record, offset) : (ushort)0;
-        string ReadString(int offset)
+        static ushort ReadWord(ReadOnlySpan<byte> data, int offset) =>
+            offset + 2 <= data.Length ? BinaryPrimitives.ReadUInt16LittleEndian(data[offset..]) : (ushort)0;
+
+        static string ReadString(ReadOnlySpan<byte> strings, int index)
         {
-            int stringIndex = offset < record.Length ? record[offset] : 0;
-            var value = stringIndex > 0 && stringIndex <= recordStrings.Length ? recordStrings[stringIndex - 1].Trim() : "";
-            return value.Length == 0 ? ModuleMemoryModel.NoData : value;
+            for (int current = 1; index > 0 && !strings.IsEmpty; current++)
+            {
+                int terminator = strings.IndexOf((byte)0);
+                if (current == index)
+                {
+                    var value = Encoding.ASCII.GetString(terminator < 0 ? strings : strings[..terminator]).Trim();
+                    return value.Length == 0 ? ModuleMemoryModel.NoData : value;
+                }
+                if (terminator < 0)
+                    break;
+                strings = strings[(terminator + 1)..];
+            }
+            return ModuleMemoryModel.NoData;
         }
 
         // Размер — 15 бит в МБ (или в КБ, если старший бит равен 1); значение 0x7FFF означает «смотри расширенное поле».
-        ushort sizeField = ReadWord(0x0C);
+        ushort sizeField = ReadWord(record, 0x0C);
         long megabytes = sizeField switch
         {
             0 or 0xFFFF => 0,
-            0x7FFF => ReadWord(0x1C) | (long)(ReadWord(0x1E) & 0x7FFF) << 16,
+            0x7FFF => ReadWord(record, 0x1C) | (long)(ReadWord(record, 0x1E) & 0x7FFF) << 16,
             _ => (sizeField & 0x8000) != 0 ? (sizeField & 0x7FFF) / 1024 : sizeField
         };
         if (megabytes == 0)
             return null;
         // Скорость в MT/s, напряжение в милливольтах.
-        int speedMTs = ReadWord(0x20), voltageMillivolts = ReadWord(0x26);
+        int speedMTs = ReadWord(record, 0x20), voltageMillivolts = ReadWord(record, 0x26);
         return new ModuleMemoryModel
         {
             Number = moduleNumber,
             Size_GB = (int)(megabytes >> 10),
-            RAM_maker = ReadString(0x17),
-            RAM_partNumber = ReadString(0x1A),
-            RAM_serialNumber = ReadString(0x18),
+            RAM_maker = ReadString(recordStrings, record[0x17]),
+            RAM_partNumber = ReadString(recordStrings, record[0x1A]),
+            RAM_serialNumber = ReadString(recordStrings, record[0x18]),
             RAM_type = record[0x12] switch { 24 => "DDR3", 26 => "DDR4", 30 => "LPDDR4", 34 => "DDR5", 35 => "LPDDR5", _ => ModuleMemoryModel.NoData },
             RAM_formFactor = record[0x0E] switch { 9 => "DIMM", 13 => "SO-DIMM", _ => ModuleMemoryModel.NoData },
             // На многих платах слоты разных каналов называются одинаково, поэтому добавляем банк.
-            RAM_slot = $"{ReadString(0x11)} · {ReadString(0x10)}",
+            RAM_slot = $"{ReadString(recordStrings, record[0x11])} · {ReadString(recordStrings, record[0x10])}",
             RAM_speed = speedMTs > 0 ? $"{speedMTs} MT/s ({speedMTs / 2} МГц)" : ModuleMemoryModel.NoData,
             RAM_voltage = voltageMillivolts > 0 ? $"{voltageMillivolts / 1000m:0.00} В" : ModuleMemoryModel.NoData
         };
     }
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
-    private static partial uint GetSystemFirmwareTable(uint signature, uint tableId, byte[]? buffer, uint bufferSize);
+    private static partial uint GetSystemFirmwareTable(uint signature, uint tableId, [Out] byte[]? buffer, uint bufferSize);
 }

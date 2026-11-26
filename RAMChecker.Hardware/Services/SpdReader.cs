@@ -25,6 +25,8 @@ public sealed class SpdReader : IDisposable
     // Общее имя блокировки шины, которое используют и другие программы мониторинга.
     private readonly Mutex busLock;
     private readonly bool isAmdController;
+    private readonly object lifetimeLock = new();
+    private bool disposed;
 
     public SpdReader()
     {
@@ -80,18 +82,21 @@ public sealed class SpdReader : IDisposable
         // переключение, поэтому результат команды не проверяется — чужие данные просто не совпадут с SMBIOS.
         if (ddr4ResultIndexes.Count > 0)
         {
-            SetPage(1);
-            foreach (int resultIndex in ddr4ResultIndexes)
+            try
             {
-                var info = result[resultIndex];
-                if (ReadBytes(info.Address, 325 - 256, 24) is { } identityBytes)
-                    info = info with { SerialNumber = Convert.ToHexString(identityBytes, 0, 4), PartNumber = Encoding.ASCII.GetString(identityBytes, 4, 20).Trim(' ', '\0') };
-                // Вторая половина второй страницы DDR4 (байты 384–511) содержит XMP 2.0.
-                if (ReadBytes(info.Address, 128, 128) is { } xmpBytes)
-                    info = info with { XmpProfile1 = DecodeDdr4Xmp(xmpBytes) };
-                result[resultIndex] = info;
+                SetPage(1);
+                foreach (int resultIndex in ddr4ResultIndexes)
+                {
+                    var info = result[resultIndex];
+                    if (ReadBytes(info.Address, 325 - 256, 24) is { } identityBytes)
+                        info = info with { SerialNumber = Convert.ToHexString(identityBytes, 0, 4), PartNumber = Encoding.ASCII.GetString(identityBytes, 4, 20).Trim(' ', '\0') };
+                    // Вторая половина второй страницы DDR4 (байты 384–511) содержит XMP 2.0.
+                    if (ReadBytes(info.Address, 128, 128) is { } xmpBytes)
+                        info = info with { XmpProfile1 = DecodeDdr4Xmp(xmpBytes) };
+                    result[resultIndex] = info;
+                }
             }
-            SetPage(0); // Другие программы и BIOS ждут, что выбрана первая страница.
+            finally { SetPage(0); } // Другие программы и BIOS ждут, что выбрана первая страница.
         }
         return result;
     });
@@ -99,10 +104,11 @@ public sealed class SpdReader : IDisposable
     private byte[]? ReadBytes(byte address, int firstRegister, int byteCount)
     {
         var readBuffer = new byte[byteCount];
+        var output = new long[1];
         for (int offset = 0; offset < byteCount; offset++)
         {
-            var output = new long[1];
-            if (!smbusDriver.Execute("ioctl_smbus_xfer", [address, SmbusRead, firstRegister + offset, ByteDataTransfer], output))
+            if (!smbusDriver.Execute("ioctl_smbus_xfer", [address, SmbusRead, firstRegister + offset, ByteDataTransfer], output, out nuint returned)
+                || returned != 1 || output[0] is < 0 or > byte.MaxValue)
                 return null;
             readBuffer[offset] = (byte)output[0];
         }
@@ -214,7 +220,11 @@ public sealed class SpdReader : IDisposable
             return null;
         // Округление DDR5 по JESD400-5: время уменьшается на 0,3 %, потому что tCK в паспорте урезан до пикосекунды
         // (333 вместо 333⅓ у DDR5-6000), и без поправки 10 нс дали бы 31 такт вместо 30.
-        int Ddr5Clocks(int spdOffset) => (ReadPicoseconds(spdOffset) * 997 / clockPeriod + 1000) / 1000;
+        int Ddr5Clocks(int spdOffset)
+        {
+            int picoseconds = ReadPicoseconds(spdOffset);
+            return picoseconds == 0 ? 0 : (picoseconds * 997 / clockPeriod + 1000) / 1000;
+        }
         int minimumCasClocks = Ddr5Clocks(30), rasToCasDelay = Ddr5Clocks(32), rowPrecharge = Ddr5Clocks(34), rowActiveTime = Ddr5Clocks(36), rowCycleTime = Ddr5Clocks(38);
         // Байты 24–28 — список поддерживаемых CL: бит 0 соответствует CL20, каждый следующий бит добавляет 2.
         // Берётся наименьшая поддерживаемая задержка не меньше рассчитанной; если такой нет, паспорт неверен.
@@ -253,26 +263,36 @@ public sealed class SpdReader : IDisposable
 
     private T RunWithBusLock<T>(Func<T> action)
     {
-        try
+        lock (lifetimeLock)
         {
-            // Шину держит другая программа (мониторинг, подсветка): это не то же самое, что отсутствие паспорта.
-            if (!busLock.WaitOne(500))
-                throw new TimeoutException("шина занята другой программой.");
+            ObjectDisposedException.ThrowIf(disposed, this);
+            try
+            {
+                // Шину держит другая программа (мониторинг, подсветка): это не то же самое, что отсутствие паспорта.
+                if (!busLock.WaitOne(500))
+                    throw new TimeoutException("шина занята другой программой.");
+            }
+            catch (AbandonedMutexException) { }
+            try
+            {
+                // Port selection and the transfer must share the same lock with other monitoring software.
+                if (isAmdController && !smbusDriver.Execute("ioctl_piix4_port_sel", [0], new long[1]))
+                    throw new InvalidOperationException("Не удалось выбрать порт SMBus.");
+                return action();
+            }
+            finally { busLock.ReleaseMutex(); }
         }
-        catch (AbandonedMutexException) { }
-        try
-        {
-            // Port selection and the transfer must share the same lock with other monitoring software.
-            if (isAmdController && !smbusDriver.Execute("ioctl_piix4_port_sel", [0], new long[1]))
-                throw new InvalidOperationException("Не удалось выбрать порт SMBus.");
-            return action();
-        }
-        finally { busLock.ReleaseMutex(); }
     }
 
     public void Dispose()
     {
-        smbusDriver.Dispose();
-        busLock.Dispose();
+        lock (lifetimeLock)
+        {
+            if (disposed)
+                return;
+            disposed = true;
+            smbusDriver.Dispose();
+            busLock.Dispose();
+        }
     }
 }

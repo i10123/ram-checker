@@ -136,8 +136,13 @@ public static partial class MemoryDiagnosticService
                 for (long i = residue; i < data.Length; i += 20)
                 {
                     if (((i - residue) & CancellationCheckMask) == 0) token.ThrowIfCancellationRequested();
-                    if (step.Kind == Operation.ModWrite) data[(int)i] = value;
-                    else if (data[(int)i] != value) onError(first + i, value, data[(int)i]);
+                    if (step.Kind == Operation.ModWrite)
+                        data[(int)i] = value;
+                    else
+                    {
+                        uint actual = data[(int)i];
+                        if (actual != value) onError(first + i, value, actual);
+                    }
                 }
                 return selected * 4;
         }

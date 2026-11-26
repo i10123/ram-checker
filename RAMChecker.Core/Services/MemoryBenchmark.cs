@@ -80,17 +80,19 @@ public static partial class MemoryBenchmark
     });
 
     // Суммарный объём кэшей L3 по сведениям Windows (у процессоров из нескольких кристаллов их несколько).
-    // В 64-битном процессе записи по 32 байта: тип записи в байтах 8–11 (2 — кэш), уровень кэша в байте 16, размер в байтах 20–23.
+    // SYSTEM_LOGICAL_PROCESSOR_INFORMATION содержит маску размером с указатель, тип и выровненное объединение на 16 байт.
     private static long GetL3CacheBytes()
     {
         uint bufferLength = 0;
         GetLogicalProcessorInformation(null, ref bufferLength);
         var buffer = new byte[bufferLength];
         long totalCacheBytes = 0;
+        int cacheOffset = IntPtr.Size * 2;
+        int recordSize = cacheOffset + 16;
         if (GetLogicalProcessorInformation(buffer, ref bufferLength))
-            for (int recordOffset = 0; recordOffset + 32 <= bufferLength; recordOffset += 32)
-                if (BitConverter.ToInt32(buffer, recordOffset + 8) == 2 && buffer[recordOffset + 16] == 3)
-                    totalCacheBytes += BitConverter.ToUInt32(buffer, recordOffset + 20);
+            for (int recordOffset = 0; recordOffset + recordSize <= bufferLength; recordOffset += recordSize)
+                if (BitConverter.ToInt32(buffer, recordOffset + IntPtr.Size) == 2 && buffer[recordOffset + cacheOffset] == 3)
+                    totalCacheBytes += BitConverter.ToUInt32(buffer, recordOffset + cacheOffset + 4);
         return totalCacheBytes;
     }
 

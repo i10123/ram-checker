@@ -167,7 +167,7 @@ public class MainViewModel : ObservableObject
             return;
         try
         {
-            storage.Write("history.json", History.ToList());
+            storage.WriteHistory(History);
         }
         catch (Exception ex) { Notice = "Не удалось сохранить историю: " + ex.Message; }
     }

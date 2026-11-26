@@ -27,6 +27,9 @@ void Check(bool passed, string checkName)
     if (!passed) failedCount++;
 }
 
+DiagnosticUnitTests.Run(Check);
+await DiagnosticFeatureTests.RunAsync(Check);
+
 // --- Алгоритм ---
 var block = new uint[100_000];
 var foundErrors = new List<(long, uint, uint)>();
@@ -140,6 +143,28 @@ using (var stop = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
         "Стресс: оба направления копирования, чистая карта и учёт трафика");
 }
 
+using (var stopFirst = new CancellationTokenSource(TimeSpan.FromSeconds(10)))
+using (var stopSecond = new CancellationTokenSource())
+{
+    var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    var firstRun = RunAsync(1L << 20, DiagnosticMode.Continuous, false,
+        new SyncProgress<DiagnosticProgress>(_ => started.TrySetResult()), stopFirst.Token);
+    try
+    {
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        var secondRun = RunAsync(1L << 20, DiagnosticMode.Quick, false, progress, stopSecond.Token);
+        stopSecond.Cancel();
+        var queued = await secondRun;
+        Check(queued.Status == DiagnosticStatus.Stopped && queued.ProcessedBytes == 0,
+            "Отмена ожидающей диагностики не затрагивает активную проверку");
+    }
+    finally
+    {
+        stopFirst.Cancel();
+        await firstRun;
+    }
+}
+
 // --- Неверные параметры ---
 async Task<bool> Rejected(long bytes, int mode)
 {
@@ -156,7 +181,7 @@ Check(await Rejected(64L << 20, 4) && await Rejected(64L << 20, -5), "неизв
 // как при автосохранении, и читается заново, как после аварийного закрытия.
 var session = new DiagnosticResult { RequestedBytes = 64L << 20 };
 await RunAsync(64L << 20, DiagnosticMode.Quick, false, new SyncProgress<DiagnosticProgress>(session.ApplyProgress), CancellationToken.None, imitation: true);
-var storage = new LocalStorage(Path.Combine(Path.GetTempPath(), "MemScope.Tests"));
+var storage = new LocalStorage(Directory.CreateTempSubdirectory("MemScopeHistory").FullName);
 storage.Write("history.json", new List<DiagnosticResult> { session });
 var restored = storage.ReadHistory(out _)[0];
 Check(restored.Status == DiagnosticStatus.Interrupted && restored.ErrorCount > 0 && restored.Errors.Count == restored.ErrorCount
@@ -195,6 +220,16 @@ storage.Write("history.json", new[] {
 });
 Check(storage.ReadHistory(out skippedRecords).Count == 1 && skippedRecords == 1,
     "история принимает совпадающие отметки времени и отбрасывает обратный ход времени");
+File.WriteAllText(historyPath, """[{"Status":"Stopped","AlgorithmName":null},{"Status":"Completed"}]""");
+Check(storage.ReadHistory(out skippedRecords).Count == 1 && skippedRecords == 1,
+    "История пропускает запись без названия алгоритма");
+var savedHistory = File.ReadAllBytes(historyPath);
+bool historyLimitReported = false;
+try { storage.WriteHistory(Enumerable.Repeat(session, 10_001).ToArray()); }
+catch (IOException) { historyLimitReported = true; }
+Check(historyLimitReported && File.ReadAllBytes(historyPath).SequenceEqual(savedHistory),
+    "Отказ при превышении лимита записей сохраняет прежнюю историю");
+Directory.Delete(storage.DirectoryPath, recursive: true);
 var commitSnapshot = new MemorySnapshot(100, 25, 120, 150, null);
 Check(commitSnapshot.RemainingCommit == 30 && (commitSnapshot with { Committed = 180 }).RemainingCommit == 0
     && (commitSnapshot with { CommitLimit = null }).RemainingCommit is null,
@@ -255,6 +290,12 @@ Check(xmpProfileInfo is { SpeedMTs: 3200, CasLatency: 16, RasToCasDelay: 18, Row
     $"XMP 2.0: DDR4-3200 16-18-18-36, 1,35 В: {xmpProfileInfo}");
 Check(SpdReader.DecodeDdr4Xmp(new byte[128]) is null, "XMP без сигнатуры и профиля не принимается");
 
+const ulong gib = 1UL << 30;
+var constrained = new MemorySnapshot(16 * gib, 8 * gib, 95 * gib, 96 * gib, null);
+Check(MemorySnapshot.SafeTestBytes(constrained) == 0 &&
+    MemorySnapshot.SafeTestBytes(constrained with { CommitLimit = null }) > 6L << 30,
+    "Проверка учитывает остаток лимита выделения и работает без показаний счётчика");
+
 // --- SMBIOS ---
 // Таблица из двух записей: планка DDR4 на 8 ГБ с тремя строками и конец таблицы. Первая запись — другого типа и пропускается.
 byte[] Record(byte type, int formattedLength, Action<byte[]> fill, params string[] strings)
@@ -289,6 +330,7 @@ Check(smbios[1] is { RAM_type: "DDR5", Number: 2, Size_GB: 16 }, "SMBIOS: нум
 Check(SmbiosMemory.Parse(Table(Record(17, 0x1B, record => (record[0x0C], record[0x0D], record[0x12]) = (0, 0x10, 24), "A", "B", "C", "D", "E")))[0] is { Size_GB: 4, RAM_speed: ModuleMemoryModel.NoData, RAM_voltage: ModuleMemoryModel.NoData },
     "SMBIOS: у короткой записи нет скорости и напряжения");
 Check(SmbiosMemory.Parse(Table(Record(17, 0x28, Dimm(8192, 26), "A"), [17, 0xFF, 0, 0], Record(17, 0x28, Dimm(8192, 26), "A"))).Count == 1, "SMBIOS: испорченная запись обрывает разбор");
+Check(SmbiosMemory.Parse(new byte[7]).Count == 0, "Неполный заголовок SMBIOS пропускается");
 Check(SmbiosMemory.Read().Count >= 0, "SMBIOS: таблица этого компьютера читается");
 
 // Паспорт DDR5-4800 40-39-39-77, 16 ГБ: кристаллы 16 Гбит x8, один ранг, два подканала по 32 бита.
@@ -307,6 +349,8 @@ byte[] CorruptDdr5(Action<byte[]> change)
 }
 var info5 = SpdReader.DecodeDdr5(0x50, CorruptDdr5(_ => { }));
 Check(info5 is { NominalSpeed: 4800, CasLatency: 40, RasToCasDelay: 39, RowPrecharge: 39, RowActiveTime: 77, RowCycleTime: 116, SizeGB: 16 }, $"DDR5-4800 40-39-39-77, 16 ГБ: {info5}");
+Check(SpdReader.DecodeDdr5(0x50, CorruptDdr5(data => data[32] = data[33] = 0)) is null,
+    "Нулевое время tRCD в паспорте DDR5 отклоняется");
 Check(SpdReader.DecodeDdr5(0x50, spd5) is null, "DDR5: испорченная контрольная сумма отклоняется");
 Check(SpdReader.DecodeDdr5(0x50, CorruptDdr5(spdCopy => spdCopy[2] = 0x0C)) is null && SpdReader.DecodeDdr4(0x50, CorruptDdr5(_ => { })) is null, "DDR5 и DDR4 не принимают паспорта друг друга");
 Check(SpdReader.DecodeDdr5(0x50, CorruptDdr5(spdCopy => spdCopy[24] = spdCopy[25] = 0)) is null && SpdReader.DecodeDdr5(0x50, CorruptDdr5(spdCopy => spdCopy[20] = spdCopy[21] = 0)) is null, "DDR5: пустой список CL и нулевой tCK отклоняются");
@@ -361,6 +405,12 @@ try
     var markdown = File.ReadAllText(markdownPath);
     Check(markdown.Contains(string.Join("\n", "| 0 | 30 | 50 |", "| 1 | 30 | 50 |", "| 2 | 30 | 50 |",
         "| 3 | 40 | — |", "| 4 | 40 | — |")), "Markdown показывает по одной строке на секунду до конца проверки");
+    intervals.ElapsedSeconds = TimeSpan.FromDays(5).TotalSeconds;
+    intervals.Mode = "A | B";
+    ReportExporter.Save(intervals, markdownPath);
+    var longReport = File.ReadAllText(markdownPath);
+    Check(longReport.Split('\n').Length < 400 && !longReport.Contains("A | B"),
+        "Длительный отчёт ограничен сохранёнными замерами, разделитель внутри названия безопасен");
 }
 finally { exportDirectory.Delete(true); }
 

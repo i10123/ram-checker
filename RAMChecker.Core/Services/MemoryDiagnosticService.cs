@@ -21,6 +21,7 @@ public static partial class MemoryDiagnosticService
     public const byte NotChecked = 0, Ok = 1, Error = 2, Waiting = 3, Checking = 4, StepDone = 5;
     private static readonly string[] Steps = ["Заполнение", "Проверка вперёд", "Проверка назад"];
     private static readonly string[] Patterns = ["Свой адрес", "Шахматный шаблон", "Бегущая единица", "Случайный шаблон"];
+    private static readonly SemaphoreSlim DiagnosticGate = new(1, 1); // Рабочий набор общий для всего процесса.
     // Отмена проверяется раз в 65 536 ячеек (256 КБ): «Остановить» срабатывает почти сразу,
     // а одна лишняя проверка условия на такой участок не замедляет цикл.
     private const int CancellationCheckMask = 0xFFFF;
@@ -75,10 +76,11 @@ public static partial class MemoryDiagnosticService
                 cancellationToken.ThrowIfCancellationRequested();
             int index = backward ? block.Length - 1 - position : position;
             uint expected = backward ? ~Pattern(firstAddress + index, pass) : Pattern(firstAddress + index, pass);
-            if (block[index] != expected)
+            uint actual = block[index];
+            if (actual != expected)
             {
                 errorCount++;
-                onError(firstAddress + index, expected, block[index]);
+                onError(firstAddress + index, expected, actual);
                 // При остановке на первой ошибке onError отменяет токен, и поток сразу выходит из блока.
                 cancellationToken.ThrowIfCancellationRequested();
             }
@@ -100,27 +102,44 @@ public static partial class MemoryDiagnosticService
         long wordsPerBlock = bytes / 4 / MapSize;
         if (bytes % (4 * MapSize) != 0 || wordsPerBlock is < 8 or > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(bytes), bytes, "Объём должен быть кратен 1 КБ и не меньше 8 КБ.");
+        if (bytes > nint.MaxValue)
+            throw new ArgumentOutOfRangeException(nameof(bytes), bytes, "Объём превышает предел для разрядности процесса.");
         if (!Enum.IsDefined(mode))
             throw new ArgumentOutOfRangeException(nameof(mode));
-        return Task.Run(() => Run(bytes, (int)wordsPerBlock, mode, stopOnFirstError, progress, cancellationToken, imitation));
+
+        return Task.Run(async () =>
+        {
+            var result = new DiagnosticResult { RequestedBytes = bytes, Mode = ModeName(mode), AlgorithmName = Describe(mode) };
+            try
+            {
+                await DiagnosticGate.WaitAsync(cancellationToken).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                result.Status = DiagnosticStatus.Stopped;
+                return result;
+            }
+
+            try
+            {
+                return Run(result, (int)wordsPerBlock, mode, stopOnFirstError, progress, cancellationToken, imitation);
+            }
+            finally
+            {
+                DiagnosticGate.Release();
+            }
+        });
     }
 
-    private static unsafe DiagnosticResult Run(long bytes, int blockWords, DiagnosticMode mode, bool stopOnFirstError,
+    private static unsafe DiagnosticResult Run(DiagnosticResult result, int blockWords, DiagnosticMode mode, bool stopOnFirstError,
         IProgress<DiagnosticProgress> progress, CancellationToken cancellationToken, bool imitation)
     {
-        var result = new DiagnosticResult { RequestedBytes = bytes, Mode = ModeName(mode), AlgorithmName = Describe(mode) };
-        // Закрепить можно не больше минимального рабочего набора процесса, поэтому он увеличивается на объём буфера
-        // (сначала максимум — минимум не может его превышать). Если Windows отказала, проверка идёт без закрепления.
+        long bytes = result.RequestedBytes;
         using var currentProcess = Process.GetCurrentProcess();
         var (originalMinWorkingSet, originalMaxWorkingSet) = (currentProcess.MinWorkingSet, currentProcess.MaxWorkingSet);
         bool bufferLocked = true;
-        try
-        {
-            currentProcess.MaxWorkingSet = originalMaxWorkingSet + (nint)bytes;
-            currentProcess.MinWorkingSet = originalMinWorkingSet + (nint)bytes;
-        }
-        catch (Win32Exception) { bufferLocked = false; }
-        var stopwatch = Stopwatch.StartNew();
+        bool restoreWorkingSet = false;
+        var stopwatch = new Stopwatch();
         using var stopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var blockAddresses = new nint[MapSize];
         int pass = 0, sentErrorCount = 0;
@@ -169,6 +188,17 @@ public static partial class MemoryDiagnosticService
 
         try
         {
+            stopSource.Token.ThrowIfCancellationRequested();
+            // Предел закрепления зависит от минимального рабочего набора. Увеличиваем сначала максимум, затем минимум.
+            try
+            {
+                currentProcess.MaxWorkingSet = checked(originalMaxWorkingSet + (nint)bytes);
+                restoreWorkingSet = true;
+                currentProcess.MinWorkingSet = checked(originalMinWorkingSet + (nint)bytes);
+            }
+            catch (Exception exception) when (exception is Win32Exception or OverflowException) { bufferLocked = false; }
+            stopwatch.Start();
+
             // Блоки обрабатываются параллельно на всех ядрах; шаги идут по всему буферу,
             // поэтому данные не успевают остаться в кэше процессора между записью и проверкой.
             var parallelOptions = new ParallelOptions { CancellationToken = stopSource.Token };
@@ -239,7 +269,7 @@ public static partial class MemoryDiagnosticService
             } while (mode is DiagnosticMode.Continuous or DiagnosticMode.Stress);
             result.Status = DiagnosticStatus.Completed;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException exception) when (exception.CancellationToken == stopSource.Token && stopSource.IsCancellationRequested)
         {
             result.Status = cancellationToken.IsCancellationRequested ? DiagnosticStatus.Stopped : DiagnosticStatus.Errors;
         }
@@ -255,12 +285,15 @@ public static partial class MemoryDiagnosticService
             if (!bufferLocked && result.Detail == "")
                 result.Detail = "Буфер не удалось закрепить в оперативной памяти, часть страниц могла уйти в файл подкачки.";
             Free(blockAddresses);
-            try
+            if (restoreWorkingSet)
             {
-                currentProcess.MinWorkingSet = originalMinWorkingSet;
-                currentProcess.MaxWorkingSet = originalMaxWorkingSet;
+                try
+                {
+                    currentProcess.MinWorkingSet = originalMinWorkingSet;
+                    currentProcess.MaxWorkingSet = originalMaxWorkingSet;
+                }
+                catch (Win32Exception) { }
             }
-            catch (Win32Exception) { }
         }
         return result;
     }

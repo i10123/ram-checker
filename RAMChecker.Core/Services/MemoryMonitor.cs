@@ -1,6 +1,8 @@
 using System.ComponentModel;
 using System.Runtime.InteropServices;
 
+[assembly: DefaultDllImportSearchPaths(DllImportSearchPath.System32)]
+
 namespace RAMChecker.Services;
 
 public record MemorySnapshot(ulong Total, ulong Available, ulong? Committed, ulong? CommitLimit, ulong? Cache)
@@ -12,7 +14,12 @@ public record MemorySnapshot(ulong Total, ulong Available, ulong? Committed, ulo
     public static string Format(ulong bytes) => bytes < 1073741824
         ? $"{bytes / 1048576d:0.#} МБ" : $"{bytes / 1073741824d:0.0} ГБ";
     // Windows и другим программам оставляем не меньше 1 ГБ или 10 % памяти, иначе страницы буфера уйдут в файл подкачки.
-    public static long SafeTestBytes(MemorySnapshot snapshot) => (long)Math.Max(0d, snapshot.Available - Math.Max(1073741824d, snapshot.Total * .1));
+    public static long SafeTestBytes(MemorySnapshot snapshot)
+    {
+        ulong available = Math.Min(snapshot.Available, snapshot.RemainingCommit ?? snapshot.Available);
+        ulong reserve = Math.Max(1UL << 30, snapshot.Total / 10);
+        return (long)Math.Min((ulong)long.MaxValue, available - Math.Min(available, reserve));
+    }
 }
 
 public static partial class MemoryMonitor

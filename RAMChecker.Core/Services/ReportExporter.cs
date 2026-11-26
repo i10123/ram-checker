@@ -34,28 +34,57 @@ public static class ReportExporter
     private static string CreateMarkdown(DiagnosticResult result)
     {
         List<string> lines = [$"# MemScope: {result.StatusText}", "", "| Параметр | Значение |", "|---|---|"];
-        lines.AddRange(Summary(result).Select(row => $"| {row.Item1} | {row.Item2} |"));
-        lines.AddRange(["", result.Detail, "", "## Рекомендации", "", result.Recommendation, "", "## Конфигурация", "", "```", result.Configuration, "```"]);
+        lines.AddRange(Summary(result).Select(row => $"| {row.Item1} | {EscapeMarkdown(row.Item2)} |"));
+        lines.AddRange(["", EscapeMarkdown(result.Detail), "", "## Рекомендации", "", result.Recommendation, "", "## Конфигурация", ""]);
+        lines.AddRange(result.Configuration.ReplaceLineEndings("\n").Split('\n').Select(line => "    " + line));
         if (result.Errors.Count > 0)
         {
             lines.AddRange(["", "## Ошибки (первые 1000)", "", "| Смещение в буфере | Ожидалось | Прочитано | Шаг | Проход |", "|---|---|---|---|---|"]);
-            lines.AddRange(result.Errors.Select(error => $"| {error.OffsetText} | {error.ExpectedText} | {error.ActualText} | {error.Stage} | {error.Pass} |"));
+            lines.AddRange(result.Errors.Select(error => $"| {error.OffsetText} | {error.ExpectedText} | {error.ActualText} | {EscapeMarkdown(error.Stage)} | {error.Pass} |"));
         }
         if (result.Samples.Count > 0)
         {
-            lines.AddRange(["", "## Нагрузка памяти", "", "Для каждой секунды показан последний сохранённый замер. Между замерами значение повторяется.", "",
+            const int maxSecondRows = 60 * 60;
+            double end = Math.Max(result.ElapsedSeconds, result.Samples[^1].Seconds);
+            bool perSecond = end < maxSecondRows;
+            lines.AddRange(["", "## Нагрузка памяти", "", perSecond
+                ? "Для каждой секунды показан последний сохранённый замер. Между замерами значение повторяется."
+                : "Для длительной проверки в таблице показаны сохранённые замеры.", "",
                 "| Секунда от старта | Физическая память, % | Выделенная память, % лимита |", "|---:|---:|---:|"]);
-            int next = 0;
-            LoadSample? latest = null;
-            long lastSecond = (long)Math.Max(result.ElapsedSeconds, result.Samples[^1].Seconds);
-            for (long second = 0; second <= lastSecond; second++)
+            if (perSecond)
             {
-                while (next < result.Samples.Count && result.Samples[next].Seconds < second + 1)
-                    latest = result.Samples[next++];
-                lines.Add($"| {second} | {latest?.PhysicalPercent.ToString("0.#") ?? "—"} | {latest?.CommitPercent?.ToString("0.#") ?? "—"} |");
+                int next = 0;
+                LoadSample? latest = null;
+                for (int second = 0; second <= (int)end; second++)
+                {
+                    while (next < result.Samples.Count && result.Samples[next].Seconds < second + 1)
+                        latest = result.Samples[next++];
+                    lines.Add(LoadRow(second.ToString(), latest));
+                }
             }
+            else
+                lines.AddRange(result.Samples.Select(sample => LoadRow(sample.Seconds.ToString("0.###"), sample)));
         }
         return string.Join("\n", lines);
+    }
+
+    private static string LoadRow(string second, LoadSample? sample) =>
+        $"| {second} | {sample?.PhysicalPercent.ToString("0.#") ?? "—"} | {sample?.CommitPercent?.ToString("0.#") ?? "—"} |";
+
+    // ASCII-пунктуация может открывать разметку, ссылку или новую ячейку таблицы.
+    private static string EscapeMarkdown(string text)
+    {
+        var escaped = new StringBuilder(text.Length);
+        foreach (char character in text)
+        {
+            if (char.IsWhiteSpace(character))
+                escaped.Append(' ');
+            else if (char.IsAscii(character) && (char.IsPunctuation(character) || char.IsSymbol(character)))
+                escaped.Append("&#").Append((int)character).Append(';');
+            else
+                escaped.Append(character);
+        }
+        return escaped.ToString();
     }
 
     // PDF собирает библиотека MigraDoc: абзацы и таблицы раскладываются по страницам сами.
