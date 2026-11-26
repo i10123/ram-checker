@@ -6,9 +6,11 @@ using RAMChecker.Services;
 
 namespace RAMChecker.ViewModels;
 
+public record Preferences(string Language = "ru", int IntervalMs = 1000);
+
 public class MainViewModel : ObservableObject
 {
-    private readonly LocalStorage storage = new();
+    private readonly LocalStorage storage;
     private readonly DispatcherTimer timer = new() { Interval = TimeSpan.FromSeconds(1) };
     private bool historyWritable = true;
     private Task loading = Task.CompletedTask;
@@ -16,17 +18,70 @@ public class MainViewModel : ObservableObject
     public OverviewViewModel Overview { get; }
     public TestingViewModel Test { get; }
     public ObservableCollection<DiagnosticResult> History { get; } = [];
-    public string[] Navigation { get; } = ["Обзор", "Тестирование", "Результаты"];
+    public int[] Intervals { get; } = [250, 500, 1000, 2000, 5000];
+    private Preferences preferences = new();
+    public int IntervalMs
+    {
+        get => preferences.IntervalMs;
+        set
+        {
+            if (!Intervals.Contains(value) || value == IntervalMs) return;
+            preferences = preferences with { IntervalMs = value };
+            timer.Interval = TimeSpan.FromMilliseconds(value);
+            SavePreferences();
+        }
+    }
+    public int LanguageIndex
+    {
+        get => preferences.Language == "en" ? 1 : 0;
+        set
+        {
+            if (value is not (0 or 1) || value == LanguageIndex) return;
+            preferences = preferences with { Language = value == 1 ? "en" : "ru" };
+            ApplyLanguage();
+            SavePreferences();
+        }
+    }
+    private void SavePreferences()
+    {
+        try { storage.Write("settings.json", preferences); }
+        catch (Exception ex) { Notice = ex.Message; }
+    }
+    private void ApplyLanguage()
+    {
+        var culture = System.Globalization.CultureInfo.GetCultureInfo(LanguageIndex == 1 ? "en-US" : "ru-RU");
+        System.Globalization.CultureInfo.CurrentUICulture = culture;
+        System.Globalization.CultureInfo.CurrentCulture = culture;
+        System.Globalization.CultureInfo.DefaultThreadCurrentUICulture = culture;
+        var dictionaries = System.Windows.Application.Current.Resources.MergedDictionaries;
+        var language = new System.Windows.ResourceDictionary { Source = new Uri($"/RAMChecker;component/Languages/{(LanguageIndex == 1 ? "en" : "ru")}.xaml", UriKind.Relative) };
+        var old = dictionaries.FirstOrDefault(d => d.Source?.OriginalString.StartsWith("/RAMChecker;component/Languages/") == true);
+        dictionaries.Add(language);
+        if (old != null) dictionaries.Remove(old);
+        UiLanguage.Current.Set(LanguageIndex == 1);
+        Overview.RefreshLanguage();
+        Test.RefreshLanguage();
+        foreach (var result in History) result.Refresh();
+        NotifyChanged();
+    }
     public bool HasNotice => Notice.Length > 0;
     public bool HasSelectedResult => SelectedResult is not null;
     public bool HasNoHistory => History.Count == 0;
     public RelayCommand DeleteResultCommand { get; }
 
-    public MainViewModel()
+    public MainViewModel() : this(new LocalStorage()) { }
+
+    public MainViewModel(LocalStorage storage)
     {
+        this.storage = storage;
         Overview = new(this);
         Test = new(this);
+        try { preferences = storage.Read<Preferences>("settings.json") ?? new(); }
+        catch (Exception ex) { Notice = ex.Message; }
+        if (!Intervals.Contains(IntervalMs)) preferences = preferences with { IntervalMs = 1000 };
+        timer.Interval = TimeSpan.FromMilliseconds(IntervalMs);
         DeleteResultCommand = new(DeleteResult, () => SelectedResult is { Status: not DiagnosticStatus.Running });
+        ApplyLanguage();
         timer.Tick += (sender, eventArgs) =>
         {
             Overview.Tick();
@@ -122,5 +177,6 @@ public class MainViewModel : ObservableObject
         timer.Stop();
         await Test.StopAsync();
         await loading;
+        await Overview.CloseSensorsAsync();
     }
 }

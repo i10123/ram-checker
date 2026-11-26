@@ -16,6 +16,23 @@ public class OverviewViewModel : ObservableObject
 {
     private readonly MainViewModel main;
     private readonly Queue<double> loadSamples = new();
+    private SpdReader? sensorBus;
+    private List<SpdInfo> sensors = [];
+    private RyzenMemoryClock? clock;
+    private BoardVoltage? power;
+    private Task polling = Task.CompletedTask;
+    private readonly Queue<double> clocks = new();
+    public PointCollection ClockPoints { get; private set; } = [];
+    private long clockTimestamp;
+    private double? clockMHz;
+    public double? RecentClockMHz => Environment.TickCount64 - clockTimestamp <= 2 * main.IntervalMs ? clockMHz : null;
+    public string ClockRange { get; private set; } = "";
+    public string ClockText { get; private set; } = "—";
+    public string VoltageText { get; private set; } = "—";
+    public bool NoTemperatures => Temperatures.Count == 0;
+    public List<KeyValuePair<string, string>> Temperatures { get; private set; } = [];
+    public PointCollection CommitPoints { get; private set; } = [];
+    private readonly Queue<double> commits = new();
     private string wheaErrors = "…";
 
     public ObservableCollection<ModuleMemoryModel> ModulesMemory { get; } = [];
@@ -48,6 +65,8 @@ public class OverviewViewModel : ObservableObject
         AdministratorCommand = new(RestartAsAdministrator, () => !BenchmarkRunning && !main.Test.IsRunning);
     }
 
+    public void RefreshLanguage() => NotifyChanged();
+
     public ModuleMemoryModel? SelectedModule
     {
         get;
@@ -63,9 +82,9 @@ public class OverviewViewModel : ObservableObject
     [
         new("Производитель", module.RAM_maker), new("Модель", module.RAM_partNumber), new("Серийный номер", module.RAM_serialNumber),
         new("Тип", $"{module.RAM_type} {module.RAM_formFactor}"), new("Объём", $"{module.size_GB} ГБ"), new("Слот", module.RAM_slot),
-        new("Текущая частота", module.RAM_speed), new("Номинальная частота", module.RAM_nominalSpeed),
+        new("Настроенная скорость (SMBIOS)", module.RAM_speed), new("Номинальная частота", module.RAM_nominalSpeed),
         new("Тайминги CL-tRCD-tRP-tRAS", module.RAM_timings), new("tRC", module.RAM_tRC),
-        new("Напряжение", module.RAM_voltage)
+        new("Напряжение (SMBIOS)", module.RAM_voltage)
     ];
 
     public async Task LoadModulesAsync()
@@ -73,8 +92,14 @@ public class OverviewViewModel : ObservableObject
         try
         {
             var modules = await Task.Run(SmbiosMemory.Read);
-            if (!NeedsAdministrator)
-                await Task.Run(() => ReadSpd(modules));
+            await Task.Run(() =>
+            {
+                try { power = new BoardVoltage(); }
+                catch (Exception) { /* Optional WMI provider unavailable. */ }
+                if (NeedsAdministrator) return;
+                try { clock = new RyzenMemoryClock(); } catch (Exception) { }
+                ReadSpd(modules);
+            });
             foreach (var module in modules)
                 ModulesMemory.Add(module);
             SelectedModule = ModulesMemory.FirstOrDefault();
@@ -89,8 +114,9 @@ public class OverviewViewModel : ObservableObject
     {
         try
         {
-            using var reader = new SpdReader();
-            var spdInfos = reader.ReadAll();
+            sensorBus = new SpdReader();
+            var spdInfos = sensorBus.ReadAll();
+            sensors = spdInfos;
             var pairs = SpdMatcher.Match(modules, spdInfos, out string matchMethod);
             SpdStatus = spdInfos.Count == 0 ? "Паспорт SPD DDR4 или DDR5 не найден на шине SMBus."
                 : pairs.Count == 0 ? $"Паспорт SPD прочитан у {spdInfos.Count} из {modules.Count} модулей, но его нельзя однозначно отнести к слотам."
@@ -131,11 +157,60 @@ public class OverviewViewModel : ObservableObject
         catch (Exception) { return ModuleMemoryModel.NoData; }
     }
 
+    private async Task PollSensorsAsync()
+    {
+        var sample = await Task.Run(() =>
+        {
+            double? mhz = null, volts = null;
+            double?[] temperatures = new double?[sensors.Count];
+            try { mhz = clock?.ReadMHz(); } catch (Exception) { }
+            try { volts = power?.ReadVolts(); } catch (Exception) { }
+            try { if (sensorBus != null && sensors.Count > 0) temperatures = sensorBus.ReadTemperatures(sensors); }
+            catch (Exception ex) when (ex is TimeoutException or InvalidOperationException) { }
+            return (mhz, volts, temperatures);
+        });
+        clockMHz = sample.mhz;
+        clockTimestamp = Environment.TickCount64;
+        ClockText = sample.mhz is double mhz ? $"{mhz:0.##} MHz" : "—";
+        VoltageText = sample.volts is double volts ? $"{volts:0.000} V · {power?.Source}" : "—";
+        Temperatures = sensors.Select((sensor, i) => new KeyValuePair<string, string>(
+            $"SPD 0x{sensor.Address:X2}  {sensor.PartNumber}", sample.temperatures[i] is double t ? $"{t:0.##} °C" : "—")).ToList();
+        if (sample.mhz is double value)
+        {
+            clocks.Enqueue(value);
+            if (clocks.Count > 60) clocks.Dequeue();
+        }
+        else clocks.Clear();
+        if (clocks.Count > 0)
+        {
+            double low = clocks.Min() - 1, range = clocks.Max() + 1 - low;
+            ClockRange = $"{low:0.#}–{low + range:0.#} MHz";
+            ClockPoints = [.. clocks.Select((x,i) => new Point(i * 600d / 59, 158 - (x-low) / range * 156))];
+        }
+        else { ClockPoints = []; ClockRange = ""; }
+        NotifyChanged(nameof(ClockText), nameof(VoltageText), nameof(Temperatures), nameof(NoTemperatures), nameof(ClockPoints), nameof(ClockRange));
+    }
+
+    public async Task CloseSensorsAsync()
+    {
+        await polling;
+        sensorBus?.Dispose();
+        clock?.Dispose();
+    }
+
     public void Tick()
     {
         try
         {
             Memory = MemoryMonitor.Read();
+            if (!Loading && polling.IsCompleted)
+                polling = PollSensorsAsync();
+            if (Memory.Committed is ulong used && Memory.CommitLimit is > 0)
+            {
+                commits.Enqueue(100.0 * used / Memory.CommitLimit.Value);
+                if (commits.Count > 60) commits.Dequeue();
+            }
+            else commits.Clear();
             loadSamples.Enqueue(Memory.LoadPercent);
             if (loadSamples.Count > 60)
                 loadSamples.Dequeue();
@@ -159,6 +234,8 @@ public class OverviewViewModel : ObservableObject
         UsageArea = [.. chartPoints.Append(new(600, 160)).Append(new(chartPoints[0].X, 160))];
         UsagePoints.Freeze();
         UsageArea.Freeze();
+        CommitPoints = [.. commits.Select((v,i) => new Point((60 - commits.Count + i)*600d/59, 160 - v*1.6))];
+        NotifyChanged(nameof(CommitPoints));
         NotifyChanged(nameof(UsagePoints), nameof(UsageArea));
     }
 

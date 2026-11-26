@@ -39,6 +39,8 @@ public record MemoryCell(int Index, byte State, long BlockBytes)
     public static MemoryCell[] From(byte[] map, long bufferBytes) => [.. map.Select((state, cellIndex) => new MemoryCell(cellIndex, state, bufferBytes / map.Length))];
 }
 
+public record LoadSample(double Seconds, double PhysicalPercent, double? CommitPercent, double? ClockMHz = null);
+
 public record ModuleLine(string Slot, string Title, string Specs);
 
 // Итог одной проверки памяти; сохраняется в историю и выгружается в отчёт.
@@ -46,6 +48,7 @@ public record ModuleLine(string Slot, string Title, string Specs);
 public class DiagnosticResult : INotifyPropertyChanged
 {
     public event PropertyChangedEventHandler? PropertyChanged;
+    public void Refresh() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
     public DateTimeOffset Started { get; set; } = DateTimeOffset.Now;
     public string Mode { get; set; } = "Быстрый";
     public DiagnosticStatus Status { get; set; } = DiagnosticStatus.Running;
@@ -55,6 +58,26 @@ public class DiagnosticResult : INotifyPropertyChanged
     public int Passes { get; set; }
     public string Detail { get; set; } = "";
     public string Configuration { get; set; } = "";
+    public List<LoadSample> Samples { get; set; } = [];
+    private long observation, stride = 1;
+    public void RecordLoad(double seconds, MemorySnapshot snapshot, double? clockMHz = null)
+    {
+        // Keep both endpoints across a long run. When full, halve the historical resolution.
+        var points = new List<LoadSample>(Samples);
+        if (observation > 0 && (observation - 1) % stride != 0)
+            points.RemoveAt(points.Count - 1);
+        if (points.Count >= 120)
+        {
+            points = points.Where((_, index) => index % 2 == 0).ToList();
+            stride *= 2;
+        }
+        points.Add(new(seconds, snapshot.LoadPercent, snapshot.CommitLimit is > 0 && snapshot.Committed is ulong used
+            ? Math.Clamp(100d * used / snapshot.CommitLimit.Value, 0, 100) : null, clockMHz));
+        Samples = points;
+        observation++;
+        PropertyChanged?.Invoke(this, new(nameof(Samples)));
+        PropertyChanged?.Invoke(this, new(nameof(SampleRange)));
+    }
     public List<MemoryError> Errors { get; set; } = [];
     public byte[] Map { get; set; } = new byte[MemoryDiagnosticService.MapSize];
 
@@ -73,6 +96,7 @@ public class DiagnosticResult : INotifyPropertyChanged
     [JsonIgnore] public bool HasErrors => ErrorCount > 0;
     // Уровень для цвета в списке: 0 — не завершена, 1 — без ошибок, 2 — есть ошибки.
     [JsonIgnore] public int Level => ErrorCount > 0 ? 2 : Status == DiagnosticStatus.Completed ? 1 : 0;
+    [JsonIgnore] public string SampleRange => Samples.Count == 0 ? "Нет измерений" : $"{Samples[0].Seconds:0.#}–{Samples[^1].Seconds:0.#} s";
     [JsonIgnore] public MemoryCell[] Cells => MemoryCell.From(Map, RequestedBytes);
     // Строка конфигурации «слот: производитель модель, объём, скорость, тайминги» делится на три части для карточки планки.
     [JsonIgnore] public ModuleLine[] ConfigurationModules => [.. Configuration.Split('\n', StringSplitOptions.RemoveEmptyEntries).Select(line =>

@@ -15,6 +15,7 @@ public class TestingViewModel : ObservableObject
     private Task? running;
     private DiagnosticResult? active;
     private long lastSaved;
+    private readonly System.Diagnostics.Stopwatch sampleTime = new();
 
     public string[] Modes { get; } = ["Быстрый · 10 минут", "Полный · 2 часа", "Циклический · до остановки", "Стресс · вся свободная память"];
     public int ModeIndex { get; set; }
@@ -72,6 +73,8 @@ public class TestingViewModel : ObservableObject
     // Промежуточное автосохранение каждые 10 секунд
     public void Tick()
     {
+        if (active != null && main.Overview.Memory is { } snapshot)
+            active.RecordLoad(sampleTime.Elapsed.TotalSeconds, snapshot, Overview.RecentClockMHz);
         if (active is not null && active.ElapsedSeconds - lastSaved >= 10)
         {
             lastSaved = (long)active.ElapsedSeconds;
@@ -95,14 +98,14 @@ public class TestingViewModel : ObservableObject
         // Предупреждение об опасной операции: большой буфер может замедлить Windows и другие программы.
         // Предупреждение об опасной операции: большой буфер может замедлить Windows и другие программы.
         if ((ModeIndex == 3 || MemoryMiB * 2 > MaxMemoryMiB) && MessageBox.Show(
-            $"Проверка займёт {TestMemoryText} и загрузит все ядра процессора. Компьютер может временно замедлиться, " +
-            "сохраните открытые документы. Продолжить?", "Большая нагрузка", MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
+            UiLanguage.Current.English ? $"The test will use {UiLanguage.Current.Display(TestMemoryText)} and load all CPU cores. Save open documents before continuing. Continue?" : $"Проверка займёт {TestMemoryText} и загрузит все ядра процессора. Компьютер может временно замедлиться, " +
+            "сохраните открытые документы. Продолжить?", RAMChecker.Helpers.UiLanguage.Current.Display("Большая нагрузка"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
             return;
         // Пока был открыт вопрос, свободной памяти могло стать меньше, поэтому перед выделением буфера проверяем снова.
         if (MemoryMiB > SafeMiB(MemoryMonitor.Read()))
         {
-            MessageBox.Show("Свободной памяти стало меньше, чем нужно для проверки с резервом для Windows. Уменьшите объём.",
-                "Недостаточно памяти", MessageBoxButton.OK, MessageBoxImage.Warning);
+            MessageBox.Show(RAMChecker.Helpers.UiLanguage.Current.Display("Свободной памяти стало меньше, чем нужно для проверки с резервом для Windows. Уменьшите объём."),
+                RAMChecker.Helpers.UiLanguage.Current.Display("Недостаточно памяти"), MessageBoxButton.OK, MessageBoxImage.Warning);
             return;
         }
         // Запуск с ключом --imitation добавляет искусственную ошибку, чтобы показать, как выглядит неисправная память.
@@ -115,6 +118,8 @@ public class TestingViewModel : ObservableObject
                 $"{module.RAM_slot}: {module.RAM_maker} {module.RAM_partNumber}, {module.size_GB} ГБ, {module.RAM_speed.Split(" (")[0]}"))
         };
         (lastSaved, LastResult) = (0, null);
+        sampleTime.Restart();
+        if (main.Overview.Memory is { } first) session.RecordLoad(0, first, Overview.RecentClockMHz);
         main.AddResult(session);
 
         // Сервис сообщает прогресс из фонового потока, Progress переносит его в поток интерфейса.
@@ -139,6 +144,7 @@ public class TestingViewModel : ObservableObject
         try
         {
             result = await MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], StopOnError, progress, cancellation.Token, imitation);
+            result.Samples = session.Samples;
             result.Started = session.Started;
             result.Mode = session.Mode;
             result.Configuration = session.Configuration;
@@ -167,6 +173,8 @@ public class TestingViewModel : ObservableObject
         (result.HasErrors ? SystemSounds.Hand : SystemSounds.Asterisk).Play();
         NotifyChanged();
     }
+
+    public void RefreshLanguage() => NotifyChanged();
 
     public void WindowActivated()
     {

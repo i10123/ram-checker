@@ -1,6 +1,7 @@
 <Window x:Class="RAMChecker.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:RAMChecker.Helpers"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="clr-namespace:RAMChecker.ViewModels"
         xmlns:v="clr-namespace:RAMChecker.Views"
         Title="MemScope" Icon="Assets/logo.ico" Width="1280" Height="820" MinWidth="1000" MinHeight="640"
@@ -19,14 +20,19 @@
         </Grid.ColumnDefinitions>
 
         <DockPanel Margin="12,24,12,12">
-            <ListBox ItemsSource="{Binding Navigation}" SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0" />
+            <ListBox SelectedIndex="{Binding SelectedPage}" Background="Transparent" BorderThickness="0">
+                <ListBoxItem Content="{DynamicResource UiOverview}" />
+                <ListBoxItem Content="{DynamicResource UiTesting}" />
+                <ListBoxItem Content="{DynamicResource UiResults}" />
+                <ListBoxItem Content="{DynamicResource UiSettings}" />
+            </ListBox>
         </DockPanel>
 
         <DockPanel Grid.Column="1">
             <Border DockPanel.Dock="Top" Margin="16,16,32,0" Padding="12" CornerRadius="8"
                     Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
                     Visibility="{Binding HasNotice, Converter={StaticResource BoolToVisibility}}">
-                <TextBlock Text="{Binding Notice}" TextWrapping="Wrap" />
+                <TextBlock Text="{ui:UiText Notice}" TextWrapping="Wrap" />
             </Border>
             <TabControl SelectedIndex="{Binding SelectedPage}" BorderThickness="0" Background="Transparent" Padding="0">
                 <TabControl.ItemContainerStyle>
@@ -43,6 +49,21 @@
                 </TabItem>
                 <TabItem>
                     <v:ResultsView />
+                </TabItem>
+                <TabItem>
+                    <StackPanel Margin="16,24,16,8">
+                        <TextBlock Text="{DynamicResource UiSettings}" Style="{StaticResource PageTitle}" />
+                        <Border Style="{StaticResource Card}">
+                            <StackPanel>
+                                <TextBlock Text="{DynamicResource UiInterfaceLanguage}" Style="{StaticResource SectionTitle}" />
+                                <ComboBox SelectedIndex="{Binding LanguageIndex}" HorizontalAlignment="Left" Width="200">
+                                    <ComboBoxItem Content="Русский" /><ComboBoxItem Content="English" />
+                                </ComboBox>
+                                <TextBlock Text="{DynamicResource UiRefreshIntervalMs}" Style="{StaticResource SectionTitle}" Margin="0,24,0,8" />
+                                <ComboBox ItemsSource="{Binding Intervals}" SelectedItem="{Binding IntervalMs}" HorizontalAlignment="Left" Width="200"/>
+                            </StackPanel>
+                        </Border>
+                    </StackPanel>
                 </TabItem>
             </TabControl>
         </DockPanel>

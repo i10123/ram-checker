@@ -9,7 +9,7 @@ namespace RAMChecker
             DispatcherUnhandledException += (_, eventArgs) =>
             {
                 eventArgs.Handled = true;
-                MessageBox.Show(eventArgs.Exception.Message, "Непредвиденная ошибка", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBox.Show(eventArgs.Exception.Message, RAMChecker.Helpers.UiLanguage.Current.Display("Непредвиденная ошибка"), MessageBoxButton.OK, MessageBoxImage.Error);
             };
         }
     }

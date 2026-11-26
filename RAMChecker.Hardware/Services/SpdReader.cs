@@ -6,6 +6,8 @@ namespace RAMChecker.Services;
 public record SpdInfo(byte Address, int NominalSpeed, int CasLatency, int RasToCasDelay, int RowPrecharge, int RowActiveTime, int RowCycleTime, int SizeGB)
 {
     // Серийный номер и модель планки — по ним паспорт сопоставляется с модулем из SMBIOS.
+    public bool IsDdr5 { get; init; }
+    public bool HasTemperatureSensor { get; init; }
     public string SerialNumber { get; init; } = "";
     public string PartNumber { get; init; } = "";
 }
@@ -17,12 +19,13 @@ public sealed class SpdReader : IDisposable
     private readonly PawnIO smbusDriver;
     // Общее имя блокировки шины, которое используют и другие программы мониторинга.
     private readonly Mutex busLock;
+    private readonly bool isAmdController;
 
     public SpdReader()
     {
         // Модуль PIIX4 подходит для AMD, I801 — для Intel. При загрузке модуль ищет свой контроллер SMBus и без него
         // не загружается (pawnio_load возвращает ошибку) — тогда пробуем второй. Отсутствие самого драйвера не перехватываем.
-        bool isAmdController = true;
+        isAmdController = true;
         try
         {
             smbusDriver = new PawnIO("SmbusPIIX4.bin");
@@ -41,18 +44,7 @@ public sealed class SpdReader : IDisposable
             smbusDriver.Dispose(); // Блокировку создать не удалось — драйвер не должен остаться открытым.
             throw;
         }
-        // На AMD микросхемы SPD подключены к порту 0. Другая программа могла переключить порт, поэтому он выбирается
-        // явно и, как требует описание модуля, под блокировкой шины. Ошибка значит, что контроллер занят или неисправен.
-        try
-        {
-            if (isAmdController && !RunWithBusLock(() => smbusDriver.Execute("ioctl_piix4_port_sel", [0], new long[1])))
-                throw new InvalidOperationException("не удалось выбрать порт SMBus с микросхемами SPD.");
-        }
-        catch
-        {
-            Dispose();
-            throw;
-        }
+
     }
 
     public List<SpdInfo> ReadAll() => RunWithBusLock(() =>
@@ -92,6 +84,37 @@ public sealed class SpdReader : IDisposable
         return result;
     });
 
+    public double?[] ReadTemperatures(IReadOnlyList<SpdInfo> modules) => RunWithBusLock(() =>
+        modules.Select(ReadTemperature).ToArray());
+
+    private double? ReadTemperature(SpdInfo info)
+    {
+        if (!info.HasTemperatureSensor)
+            return null;
+        if (info.IsDdr5)
+        {
+            if (ReadBytes(info.Address, 26, 1) is not [var config] || (config & 1) != 0 ||
+                ReadBytes(info.Address, 49, 2) is not { } bytes)
+                return null;
+            return DecodeTemperature(BinaryPrimitives.ReadUInt16LittleEndian(bytes), true);
+        }
+        // JC42 ambient register is transmitted MSB first in an SMBus word transaction.
+        var word = new long[1];
+        int address = 0x18 + (info.Address & 7);
+        if (!smbusDriver.Execute("ioctl_smbus_xfer", [address, SmbusRead, 1, 3], word) ||
+            (BinaryPrimitives.ReverseEndianness((ushort)word[0]) & 0x100) != 0)
+            return null; // JC42 shutdown: the ambient register may contain an old sample.
+        if (!smbusDriver.Execute("ioctl_smbus_xfer", [address, SmbusRead, 5, 3], word))
+            return null;
+        return DecodeTemperature(BinaryPrimitives.ReverseEndianness((ushort)word[0]), false);
+    }
+
+    public static double DecodeTemperature(ushort raw, bool spd5118)
+    {
+        int signed = (raw & 0x0fff) - (raw & 0x1000);
+        return spd5118 ? (signed >> 2) * 0.25 : signed / 16.0;
+    }
+
     private byte[]? ReadBytes(byte address, int firstRegister, int byteCount)
     {
         var readBuffer = new byte[byteCount];
@@ -125,7 +148,7 @@ public sealed class SpdReader : IDisposable
         }
         finally { WriteRegister(address, 11, 0); } // Другие программы ждут, что выбрана первая страница.
         return DecodeDdr5(address, spdBytes) is { } info
-            ? info with { SerialNumber = Convert.ToHexString(spdBytes, 517, 4), PartNumber = Encoding.ASCII.GetString(spdBytes, 521, 30).Trim(' ', '\0') }
+            ? info with { IsDdr5 = true, HasTemperatureSensor = ReadBytes(address, 5, 1) is [var capability] && (capability & 2) != 0, SerialNumber = Convert.ToHexString(spdBytes, 517, 4), PartNumber = Encoding.ASCII.GetString(spdBytes, 521, 30).Trim(' ', '\0') }
             : null;
     }
 
@@ -164,7 +187,7 @@ public sealed class SpdReader : IDisposable
         // Скорости DDR4 идут с шагом 133⅓ MT/s, а tCK в паспорте округлён до пикосекунды: 0,938 нс дало бы 2132,
         // а не 2133. Поэтому скорость округляется до ближайшего шага, а дробная часть отбрасывается (2666,67 → 2666).
         int nominalSpeed = (int)(Math.Round(2_000_000d / clockPeriod * 3 / 400) * 400 / 3);
-        return new(address, nominalSpeed, casLatency, rasToCasDelay, rowPrecharge, rowActiveTime, rowCycleTime, sizeGB);
+        return new(address, nominalSpeed, casLatency, rasToCasDelay, rowPrecharge, rowActiveTime, rowCycleTime, sizeGB) { HasTemperatureSensor = (spd[14] & 0x80) != 0 };
     }
 
     // Паспорт DDR5 (стандарт JESD400-5): 1024 байта, но для таймингов достаточно первых 512. Время хранится
@@ -231,6 +254,9 @@ public sealed class SpdReader : IDisposable
         catch (AbandonedMutexException) { }
         try
         {
+            // Port selection and the transfer must share the same lock with other monitoring software.
+            if (isAmdController && !smbusDriver.Execute("ioctl_piix4_port_sel", [0], new long[1]))
+                throw new InvalidOperationException("Не удалось выбрать порт SMBus.");
             return action();
         }
         finally { busLock.ReleaseMutex(); }

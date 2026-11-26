@@ -279,6 +279,28 @@ partial.Map.AsSpan().Fill(Ok);
 partial.Map[0] = Error; // красный блок мог пройти проход целиком, а мог быть остановлен на ошибке
 Check(partial.CheckedText == "не менее 510 МБ", $"с ошибками в первом проходе объём указан как нижняя граница: {partial.CheckedText}");
 
+Check(SpdReader.DecodeTemperature(0xE198, false) == 25.5 &&
+      SpdReader.DecodeTemperature(0x1ff8, false) == -0.5 &&
+      SpdReader.DecodeTemperature(0x1ffc, true) == -0.25, "SMBus: знак, флаги и дробная часть температуры");
+var series = new DiagnosticResult();
+for (int i = 0; i < 12000; i++)
+    series.RecordLoad(i * 0.25, new MemorySnapshot(100, 40, 20, 80, null), 1500.5);
+Check(series.Samples is { Count: <= 120 } && series.Samples.First().Seconds == 0 && series.Samples.Last().Seconds == 2999.75
+    && series.Samples.Last().CommitPercent == 25, "график сохраняет начало и конец длительной проверки");
+Check(ReportExporter.CreateHtml(series).Contains("<circle") && !ReportExporter.CreateHtml(report).Contains("<circle"),
+    "график использует только сохранённые измерения");
+var exportDirectory = Directory.CreateTempSubdirectory("MemScopeReport");
+try
+{
+    foreach (string extension in new[] { "csv", "pdf" })
+    {
+        var path = Path.Combine(exportDirectory.FullName, "test." + extension);
+        ReportExporter.Save(series, path);
+        Check(new FileInfo(path).Length > 100, $"экспорт {extension} с графиками или исходными данными");
+    }
+}
+finally { exportDirectory.Delete(true); }
+
 Console.WriteLine(failedCount == 0 ? "\nВсе проверки пройдены" : $"\nНе пройдено: {failedCount}");
 return failedCount;
 

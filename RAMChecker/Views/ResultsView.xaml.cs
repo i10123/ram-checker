@@ -27,7 +27,7 @@ public partial class ResultsView : UserControl
             Process.Start(new ProcessStartInfo(dialog.FileName) { UseShellExecute = true });
         }
         catch (Exception ex) {
-            MessageBox.Show(ex.Message, "Не удалось сохранить отчёт", MessageBoxButton.OK, MessageBoxImage.Error);
+            MessageBox.Show(ex.Message, RAMChecker.Helpers.UiLanguage.Current.Display("Не удалось сохранить отчёт"), MessageBoxButton.OK, MessageBoxImage.Error);
         }
     }
 }
