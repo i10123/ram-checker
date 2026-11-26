@@ -8,23 +8,17 @@ namespace RAMChecker.Services;
 
 // Map и Errors — копии, которые интерфейс может оставить у себя; null — без изменений с прошлого отчёта.
 public record DiagnosticProgress(string Stage, int Pass, int Passes, double Percent, TimeSpan Elapsed,
-    long ErrorCount, long ProcessedBytes, byte[]? Map, MemoryError[]? Errors);
+    long ErrorCount, long ProcessedBytes, byte[]? Map, MemoryError[]? Errors, byte[]? LiveMap = null);
 
-// Собственный алгоритм «Свой адрес с инверсией». Один проход состоит из трёх шагов:
-// 1) в каждую ячейку записывается значение шаблона; четыре шаблона сменяют друг друга по проходам:
-//    свой адрес, шахматный, бегущая единица, случайный;
-// 2) прямой обход: ячейка сверяется со своим значением, затем в неё пишется инверсия;
-// 3) обратный обход: сверяется инверсия, затем возвращается исходное значение.
-// Шаблон адреса находит ошибки адресации (две ячейки отвечают по одному адресу),
-// шахматный — влияние соседних ячеек друг на друга, бегущая единица — замыкание соседних линий данных
-// внутри слова, случайный — ошибки, которые проявляются только на определённых данных; шаги 2–3 — «залипшие» биты.
+public enum DiagnosticMode { Quick, Full, Continuous, Stress }
+
 public static partial class MemoryDiagnosticService
 {
     public const string Algorithm = "Свой адрес с инверсией";
     // Буфер делится на столько же блоков, сколько клеток на карте памяти.
     public const int MapSize = 256;
     // Waiting — блок уже проверялся без ошибок, но текущий проход до него ещё не дошёл.
-    public const byte NotChecked = 0, Ok = 1, Error = 2, Waiting = 3;
+    public const byte NotChecked = 0, Ok = 1, Error = 2, Waiting = 3, Checking = 4, StepDone = 5;
     private static readonly string[] Steps = ["Заполнение", "Проверка вперёд", "Проверка назад"];
     private static readonly string[] Patterns = ["Свой адрес", "Шахматный шаблон", "Бегущая единица", "Случайный шаблон"];
     // Отмена проверяется раз в 65 536 ячеек (256 КБ): «Остановить» срабатывает почти сразу,
@@ -44,7 +38,7 @@ public static partial class MemoryDiagnosticService
     {
         0 => AddressPattern(address, pass),
         1 => ((address + pass / 4) & 1) == 0 ? 0xAAAAAAAAu : 0x55555555u,
-        2 => 1u << (int)((address + pass) % 32),
+        2 => 1u << (int)((address + pass / 4 + 3) % 32),
         _ => Xorshift(AddressPattern(address, pass))
     };
 
@@ -98,7 +92,7 @@ public static partial class MemoryDiagnosticService
     // imitation — искусственная ошибка для проверки отображения: после заполнения в одном блоке переворачивается бит.
     // stopOnFirstError: блоки проверяются параллельно, и до остановки каждый поток может успеть найти
     // по одной ошибке, поэтому счётчик ошибок не больше числа потоков, а не строго единица.
-    public static Task<DiagnosticResult> RunAsync(long bytes, TimeSpan? duration, bool stopOnFirstError,
+    public static Task<DiagnosticResult> RunAsync(long bytes, DiagnosticMode mode, bool stopOnFirstError,
         IProgress<DiagnosticProgress> progress, CancellationToken cancellationToken, bool imitation = false)
     {
         // Буфер делится на 256 блоков из целых 32-битных слов. В блоке не меньше 8 слов (имитация портит ячейку 7)
@@ -106,15 +100,15 @@ public static partial class MemoryDiagnosticService
         long wordsPerBlock = bytes / 4 / MapSize;
         if (bytes % (4 * MapSize) != 0 || wordsPerBlock is < 8 or > int.MaxValue)
             throw new ArgumentOutOfRangeException(nameof(bytes), bytes, "Объём должен быть кратен 1 КБ и не меньше 8 КБ.");
-        if (duration <= TimeSpan.Zero)
-            throw new ArgumentOutOfRangeException(nameof(duration), duration, "Длительность должна быть больше нуля.");
-        return Task.Run(() => Run(bytes, (int)wordsPerBlock, duration, stopOnFirstError, progress, cancellationToken, imitation));
+        if (!Enum.IsDefined(mode))
+            throw new ArgumentOutOfRangeException(nameof(mode));
+        return Task.Run(() => Run(bytes, (int)wordsPerBlock, mode, stopOnFirstError, progress, cancellationToken, imitation));
     }
 
-    private static unsafe DiagnosticResult Run(long bytes, int blockWords, TimeSpan? duration, bool stopOnFirstError,
+    private static unsafe DiagnosticResult Run(long bytes, int blockWords, DiagnosticMode mode, bool stopOnFirstError,
         IProgress<DiagnosticProgress> progress, CancellationToken cancellationToken, bool imitation)
     {
-        var result = new DiagnosticResult { RequestedBytes = bytes };
+        var result = new DiagnosticResult { RequestedBytes = bytes, Mode = ModeName(mode), AlgorithmName = Describe(mode) };
         // Закрепить можно не больше минимального рабочего набора процесса, поэтому он увеличивается на объём буфера
         // (сначала максимум — минимум не может его превышать). Если Windows отказала, проверка идёт без закрепления.
         using var currentProcess = Process.GetCurrentProcess();
@@ -129,49 +123,48 @@ public static partial class MemoryDiagnosticService
         var stopwatch = Stopwatch.StartNew();
         using var stopSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         var blockAddresses = new nint[MapSize];
-        int pass = 0, stepIndex = 0, finishedBlocks = 0, sentErrorCount = 0;
-        var resultLock = new Lock(); // System.Threading.Lock (.NET 9) — отдельный объект только для синхронизации
-        long processedBlockCount = 0; // сколько раз блоки уже записаны или проверены — для скорости проверки
-        long lastReportMilliseconds = -1000, errorCountAtLastMap = 0; // счётчик ошибок на момент последнего снимка карты
-        Span<uint> GetBlock(int blockIndex) => new((void*)blockAddresses[blockIndex], blockWords);
+        int pass = 0, sentErrorCount = 0;
+        long processedBytes = 0, cycleStart = 0, cycleBytes = 0;
+        long lastReport = -200;
+        var liveMap = new byte[MapSize];
+        long lastCompletedFrame = -1000;
+        bool mapChanged = true;
+        string stage = "";
+        var resultLock = new Lock();
+        Span<uint> GetBlock(int index) => new((void*)blockAddresses[index], blockWords);
 
-        // Не чаще пяти раз в секунду из любого потока, иначе интерфейс не успевает перерисовываться.
-        // В конце прохода отчёт отправляется всегда, чтобы счётчик проходов на экране не отставал; карту он обычно не несёт,
-        // иначе быстрые проходы всегда показывали бы полностью проверенную карту.
-        // Счётчик, карта и список ошибок копируются под той же блокировкой, что и в OnError, поэтому в одном отчёте
-        // они согласованы. Отчёт отправляется внутри блокировки, чтобы отчёты разных потоков не обгоняли друг друга.
-        // Список ошибок копируется, только когда в нём появились новые записи. Если с прошлого снимка карты
-        // появились ошибки, карта отправляется и в конце прохода — иначе автосохранение записало бы новые ошибки
-        // вместе со старой картой без красных клеток.
-        void Report(bool forceReport = false)
+        void Report(bool force = false)
         {
-            long nowMilliseconds = stopwatch.ElapsedMilliseconds, lastMilliseconds = Interlocked.Read(ref lastReportMilliseconds);
-            if (!forceReport && (nowMilliseconds - lastMilliseconds < 200 || Interlocked.CompareExchange(ref lastReportMilliseconds, nowMilliseconds, lastMilliseconds) != lastMilliseconds))
-                return;
+            long now = stopwatch.ElapsedMilliseconds;
+            if (!force && now - Interlocked.Read(ref lastReport) < 200) return;
             lock (resultLock)
             {
-                MemoryError[]? errorsCopy = result.Errors.Count == sentErrorCount ? null : [.. result.Errors];
-                byte[]? mapCopy = forceReport && result.ErrorCount == errorCountAtLastMap ? null : (byte[])result.Map.Clone();
-                (sentErrorCount, errorCountAtLastMap) = (result.Errors.Count, mapCopy is null ? errorCountAtLastMap : result.ErrorCount);
-                // В отчёте конца прохода stepIndex уже равен 3, а finishedBlocks — 256: шаг берётся последний, процент не выше 100.
-                progress.Report(new($"{PatternName(pass)} · {Steps[Math.Min(stepIndex, 2)]}", pass, result.Passes, Math.Min(100, duration is { } testDuration
-                    ? stopwatch.Elapsed / testDuration * 100
-                    : (stepIndex * MapSize + finishedBlocks) * 100.0 / (3 * MapSize)), stopwatch.Elapsed, result.ErrorCount,
-                    Interlocked.Read(ref processedBlockCount) * blockWords * 4, mapCopy, errorsCopy));
+                if (!force && now - lastReport < 200) return;
+                Interlocked.Exchange(ref lastReport, now);
+                long done = Interlocked.Read(ref processedBytes);
+                progress.Report(new(stage, pass, result.Passes, 100d * (done - cycleStart) / cycleBytes,
+                    stopwatch.Elapsed, result.ErrorCount, done, mapChanged ? (byte[])result.Map.Clone() : null,
+                    result.Errors.Count != sentErrorCount ? [.. result.Errors] : null, (byte[])liveMap.Clone()));
+                mapChanged = false;
+                sentErrorCount = result.Errors.Count;
             }
         }
 
-        void OnError(int block, long address, uint expected, uint actual)
+        void OnError(int block, long address, uint expected, uint actual, bool parity = false)
         {
             lock (resultLock)
             {
                 result.ErrorCount++;
-                result.Map[block] = Error;
+                liveMap[block] = result.Map[block] = Error;
+                mapChanged = true;
                 if (result.Errors.Count < 1000)
-                    result.Errors.Add(new(address * 4, expected, actual, $"{PatternName(pass)} · {Steps[stepIndex]}", pass));
+                    result.Errors.Add(new(address * 4, expected, actual, parity ? stage + " · Нарушение чётности" : stage, pass));
             }
             if (stopOnFirstError)
+            {
                 stopSource.Cancel();
+                stopSource.Token.ThrowIfCancellationRequested();
+            }
         }
 
         try
@@ -179,60 +172,76 @@ public static partial class MemoryDiagnosticService
             // Блоки обрабатываются параллельно на всех ядрах; шаги идут по всему буферу,
             // поэтому данные не успевают остаться в кэше процессора между записью и проверкой.
             var parallelOptions = new ParallelOptions { CancellationToken = stopSource.Token };
+            for (int index = 0; index < MapSize; index++)
+            {
+                parallelOptions.CancellationToken.ThrowIfCancellationRequested();
+                blockAddresses[index] = VirtualAlloc(0, (nuint)blockWords * 4, 0x3000, 0x04);
+                if (blockAddresses[index] == 0) throw new OutOfMemoryException();
+                bufferLocked = bufferLocked && VirtualLock(blockAddresses[index], (nuint)blockWords * 4);
+            }
             do
             {
                 pass++;
-                // Каждый проход получает буфер заново: Windows может выдать другие физические страницы,
-                // тогда за несколько проходов проверяется больше памяти, чем один буфер. Это не гарантировано.
-                Free(blockAddresses);
-                for (int blockIndex = 0; blockIndex < MapSize; blockIndex++)
+                var plan = BuildPlan(mode, pass);
+                cycleStart = processedBytes;
+                cycleBytes = plan.Sum(step => step.WorkBytes(bytes));
+                foreach (var step in plan)
                 {
-                    stopSource.Token.ThrowIfCancellationRequested();
-                    blockAddresses[blockIndex] = VirtualAlloc(0, (nuint)blockWords * 4, 0x3000, 0x04); // MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE
-                    if (blockAddresses[blockIndex] == 0)
-                        throw new OutOfMemoryException();
-                    bufferLocked = bufferLocked && VirtualLock(blockAddresses[blockIndex], (nuint)blockWords * 4);
-                }
-                // В начале прохода проверенные блоки снова ждут своей очереди: по карте видно, как идёт проход.
-                result.Map.AsSpan().Replace(Ok, Waiting);
-                for (stepIndex = 0; stepIndex < Steps.Length; stepIndex++)
-                {
-                    finishedBlocks = 0;
+                    stage = step.Name;
+                    result.Map.CopyTo(liveMap, 0);
+                    liveMap.AsSpan().Replace(Ok, Waiting);
                     Parallel.For(0, MapSize, parallelOptions, order =>
                     {
-                        int blockIndex = stepIndex == 2 ? MapSize - 1 - order : order;
-                        long firstAddress = (long)blockIndex * blockWords;
-                        if (stepIndex == 0)
+                        int block = step.Kind == Operation.Backward ? MapSize - 1 - order : order;
+                        bool copy = step.Kind == Operation.Copy;
+                        if (copy && (block & step.PairMask) != step.Offset) return;
+                        int partner = block ^ step.PairMask;
+                        void MarkLive(byte state)
                         {
-                            FillBlock(GetBlock(blockIndex), firstAddress, pass, stopSource.Token);
-                            if (imitation && blockIndex == MapSize / 3)
-                                GetBlock(blockIndex)[7] ^= 1u << 5;
+                            if (result.Map[block] != Error) liveMap[block] = state;
+                            if (copy && result.Map[partner] != Error) liveMap[partner] = state;
                         }
-                        // Клетка карты зеленеет, когда её блок прошёл текущий проход без ошибок. Карта меняется только
-                        // под блокировкой, как и в OnError, поэтому снимок в Report всегда согласован со счётчиком.
-                        else if (CheckBlock(GetBlock(blockIndex), firstAddress, pass, stepIndex == 2, (address, expectedValue, actualValue) => OnError(blockIndex, address, expectedValue, actualValue), stopSource.Token) == 0 && stepIndex == 2)
-                            lock (resultLock)
-                                if (result.Map[blockIndex] != Error)
-                                    result.Map[blockIndex] = Ok;
-                        Interlocked.Increment(ref finishedBlocks);
-                        Interlocked.Increment(ref processedBlockCount);
+                        lock (resultLock) MarkLive(Checking);
+                        Report();
+                        long first = (long)block * blockWords;
+                        var data = GetBlock(block);
+                        var token = parallelOptions.CancellationToken;
+                        void ErrorAt(long word, uint expected, uint actual) =>
+                            OnError(block, word, expected, actual, step.Kind == Operation.Parity &&
+                                (uint.PopCount(expected ^ actual) & 1) != 0);
+                        if (imitation && block == MapSize / 3 && step.Kind == Operation.CheckCopy)
+                            data[7] ^= 1u << 5;
+                        long traffic = RunStep(step, data, first, GetBlock(partner), block, ErrorAt, token);
+                        if (imitation && block == MapSize / 3 && step.Inject)
+                            data[7] ^= 1u << 5;
+                        lock (resultLock)
+                        {
+                            if (step.VerifiesBlock && result.Map[block] == NotChecked)
+                            {
+                                result.Map[block] = Ok;
+                                mapChanged = true;
+                            }
+                            MarkLive(StepDone);
+                        }
+                        Interlocked.Add(ref processedBytes, traffic);
                         Report();
                     });
                 }
                 result.Passes = pass;
-                Report(forceReport: true);
-            } while (duration is not { } durationLimit || stopwatch.Elapsed < durationLimit);
+                result.Map.CopyTo(liveMap, 0);
+                // Publish a complete frame even when a sweep fits between periodic updates.
+                if (pass == 1 || stopwatch.ElapsedMilliseconds - lastCompletedFrame >= 1000 ||
+                    mode is DiagnosticMode.Quick or DiagnosticMode.Full)
+                {
+                    Report(force: true);
+                    lastCompletedFrame = stopwatch.ElapsedMilliseconds;
+                }
+            } while (mode is DiagnosticMode.Continuous or DiagnosticMode.Stress);
             result.Status = DiagnosticStatus.Completed;
         }
         catch (OperationCanceledException)
         {
             result.Status = cancellationToken.IsCancellationRequested ? DiagnosticStatus.Stopped : DiagnosticStatus.Errors;
-        }
-        // Память заняли другие программы уже после первых проходов: их результат сохраняется.
-        catch (OutOfMemoryException) when (pass > 1)
-        {
-            result.Status = DiagnosticStatus.Stopped;
-            result.Detail = $"На проходе {pass} не удалось снова выделить память, выполнено проходов: {result.Passes}.";
         }
         catch (Exception exception)
         {
@@ -241,8 +250,8 @@ public static partial class MemoryDiagnosticService
         }
         finally
         {
+            result.ProcessedBytes = processedBytes;
             result.ElapsedSeconds = stopwatch.Elapsed.TotalSeconds;
-            result.Map.AsSpan().Replace(Waiting, Ok); // В итоге важно лишь, проверялся ли блок.
             if (!bufferLocked && result.Detail == "")
                 result.Detail = "Буфер не удалось закрепить в оперативной памяти, часть страниц могла уйти в файл подкачки.";
             Free(blockAddresses);

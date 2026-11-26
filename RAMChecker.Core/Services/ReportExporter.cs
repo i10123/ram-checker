@@ -27,7 +27,7 @@ public static class ReportExporter
     }
 
     // Общая таблица «параметр — значение» для всех форматов.
-    private static (string, string)[] Summary(DiagnosticResult result) => [("Дата", result.StartedText), ("Режим", result.Mode), ("Алгоритм", MemoryDiagnosticService.Algorithm),
+    private static (string, string)[] Summary(DiagnosticResult result) => [("Дата", result.StartedText), ("Режим", result.Mode), ("Алгоритм", result.AlgorithmName),
         ("Длительность", result.DurationText), ("Объём проверки", result.MemoryText), ("Проверено полным проходом", result.CheckedText),
         ("Проходов", result.Passes.ToString()), ("Ошибок", result.ErrorCount.ToString())];
 

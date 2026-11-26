@@ -31,6 +31,8 @@ public record MemoryCell(int Index, byte State, long BlockBytes)
     {
         MemoryDiagnosticService.Error => "найдены ошибки",
         MemoryDiagnosticService.NotChecked => "ещё не проверен",
+        MemoryDiagnosticService.Checking => "обрабатывается сейчас",
+        MemoryDiagnosticService.StepDone => "этап выполнен",
         MemoryDiagnosticService.Waiting => "ждёт текущего прохода",
         _ => "без ошибок"
     };
@@ -48,9 +50,11 @@ public class DiagnosticResult : INotifyPropertyChanged
     public event PropertyChangedEventHandler? PropertyChanged;
     public void Refresh() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(null));
     public DateTimeOffset Started { get; set; } = DateTimeOffset.Now;
+    public string AlgorithmName { get; set; } = MemoryDiagnosticService.Algorithm;
     public string Mode { get; set; } = "Быстрый";
     public DiagnosticStatus Status { get; set; } = DiagnosticStatus.Running;
     public long RequestedBytes { get; set; }
+    public long ProcessedBytes { get; set; }
     public long ErrorCount { get; set; }
     public double ElapsedSeconds { get; set; }
     public int Passes { get; set; }
@@ -107,6 +111,7 @@ public class DiagnosticResult : INotifyPropertyChanged
     // аварийного закрытия история показывала то же, что было на экране.
     public void ApplyProgress(DiagnosticProgress progress)
     {
+        ProcessedBytes = progress.ProcessedBytes;
         (ElapsedSeconds, ErrorCount, Passes) = (progress.Elapsed.TotalSeconds, progress.ErrorCount, progress.Passes);
         if (progress.Map is not null)
             Map = progress.Map;

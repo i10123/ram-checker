@@ -142,6 +142,12 @@
                             <DataTrigger Binding="{Binding State}" Value="1">
                                 <Setter TargetName="MemoryCell" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
                             </DataTrigger>
+                            <DataTrigger Binding="{Binding State}" Value="4">
+                                <Setter TargetName="MemoryCell" Property="Background" Value="{DynamicResource AccentFillColorDefaultBrush}" />
+                            </DataTrigger>
+                            <DataTrigger Binding="{Binding State}" Value="5">
+                                <Setter TargetName="MemoryCell" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
+                            </DataTrigger>
                             <DataTrigger Binding="{Binding State}" Value="3">
                                 <Setter TargetName="MemoryCell" Property="Background" Value="{DynamicResource SystemFillColorSuccessBrush}" />
                                 <Setter TargetName="MemoryCell" Property="Opacity" Value="0.35" />

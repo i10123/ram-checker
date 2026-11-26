@@ -33,8 +33,8 @@
     <sys:String x:Key="UiPass">Проход</sys:String>
     <sys:String x:Key="UiErrors">Ошибок</sys:String>
     <sys:String x:Key="UiTestBufferMap">Карта буфера проверки</sys:String>
-    <sys:String x:Key="UiEachCellRepresents1256OfTheBufferBrightGreenIndicatesAComple">Каждая клетка — 1/256 буфера. Яркая зелёная — блок прошёл текущий проход, тёмная — ждёт своей очереди, красная — найдены ошибки, серая — ещё не проверен.</sys:String>
     <sys:String x:Key="UiLoad">Нагрузка</sys:String>
+    <sys:String x:Key="UiProcessed">Прочитано и записано</sys:String>
     <sys:String x:Key="UiTestThroughput">Скорость проверки</sys:String>
     <sys:String x:Key="UiMemoryUsage">Загрузка памяти</sys:String>
     <sys:String x:Key="UiPhysicalMemory">Физическая память, %</sys:String>
@@ -52,9 +52,9 @@
     <sys:String x:Key="UiExpected">Ожидалось</sys:String>
     <sys:String x:Key="UiRead">Прочитано</sys:String>
     <sys:String x:Key="UiStage">Шаг</sys:String>
-    <sys:String x:Key="UiQuick10Minutes">Быстрый · 10 минут</sys:String>
-    <sys:String x:Key="UiFull2Hours">Полный · 2 часа</sys:String>
-    <sys:String x:Key="UiContinuousUntilStopped">Циклический · до остановки</sys:String>
-    <sys:String x:Key="UiStressAllAvailableMemory">Стресс · вся свободная память</sys:String>
+    <sys:String x:Key="UiQuick10Minutes">Быстрый</sys:String>
+    <sys:String x:Key="UiFull2Hours">Полный</sys:String>
+    <sys:String x:Key="UiContinuousUntilStopped">Циклический</sys:String>
+    <sys:String x:Key="UiStressAllAvailableMemory">Стресс</sys:String>
     <sys:String x:Key="UiLatestSamples">Последние 60 замеров</sys:String>
 </ResourceDictionary>

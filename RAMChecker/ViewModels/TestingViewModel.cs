@@ -9,7 +9,6 @@ namespace RAMChecker.ViewModels;
 
 public class TestingViewModel : ObservableObject
 {
-    private static readonly TimeSpan?[] Durations = [TimeSpan.FromMinutes(10), TimeSpan.FromHours(2), null, null];
     private readonly MainViewModel main;
     private CancellationTokenSource? cancellation;
     private Task? running;
@@ -17,8 +16,24 @@ public class TestingViewModel : ObservableObject
     private long lastSaved;
     private readonly System.Diagnostics.Stopwatch sampleTime = new();
 
-    public string[] Modes { get; } = ["Быстрый · 10 минут", "Полный · 2 часа", "Циклический · до остановки", "Стресс · вся свободная память"];
-    public int ModeIndex { get; set; }
+    private double runningSliderMaximum;
+    public int ModeIndex
+    {
+        get;
+        set
+        {
+            if (IsRunning || field == value) return;
+            field = value;
+            LastResult = null;
+            resultOnTaskbar = false;
+            Percent = 0;
+            Stage = "Готово к запуску";
+            PassText = SpeedText = "—";
+            Cells = MemoryCell.From(new byte[MemoryDiagnosticService.MapSize], (long)MemoryMiB << 20);
+            NotifyChanged();
+        }
+    }
+    public bool FiniteMode => ModeIndex is (int)DiagnosticMode.Quick or (int)DiagnosticMode.Full;
     public bool StopOnError { get; set; }
     public string Stage { get; private set; } = "Готово к запуску";
     public double Percent { get; private set; }
@@ -33,6 +48,7 @@ public class TestingViewModel : ObservableObject
     {
         null => TaskbarItemProgressState.None,
         { ErrorCount: > 0 } => TaskbarItemProgressState.Error,
+        { Status: DiagnosticStatus.Running } when !FiniteMode => TaskbarItemProgressState.Indeterminate,
         { Status: DiagnosticStatus.Running or DiagnosticStatus.Completed } => TaskbarItemProgressState.Normal,
         _ => TaskbarItemProgressState.Paused
     };
@@ -42,15 +58,16 @@ public class TestingViewModel : ObservableObject
     public bool IsIdle => !IsRunning;
     public string ElapsedText => (active ?? LastResult)?.DurationText ?? "00:00:00";
     public string ErrorCountText => ((active ?? LastResult)?.ErrorCount ?? 0).ToString();
-    public string RemainingText => active is not null && Durations[ModeIndex] is { } modeDuration
-        ? TimeSpan.FromSeconds(Math.Max(0, modeDuration.TotalSeconds - active.ElapsedSeconds)).ToString(@"hh\:mm\:ss") : "—";
+    public string ProcessedText => MemorySnapshot.Format((ulong)((active ?? LastResult)?.ProcessedBytes ?? 0));
+    public string RemainingText => active is not null && ModeIndex < 2 && Percent > 0
+        ? TimeSpan.FromSeconds(active.ElapsedSeconds * Math.Max(0, 100 - Percent) / Percent).ToString(@"hh\:mm\:ss") : "—";
     public string TestMemoryText => $"{MemoryMiB:0} МБ";
     public RelayCommand StartCommand { get; }
     public RelayCommand StopCommand { get; }
 
     private static double SafeMiB(MemorySnapshot? module) => module is null ? 0 : MemorySnapshot.SafeTestBytes(module) >> 20;
-    public double MaxMemoryMiB => Math.Max(IsRunning ? MemoryMiB : 64, SafeMiB(main.Overview.Memory));
-    public bool MemoryShort => IsIdle && (ModeIndex == 3 ? 64 : MemoryMiB) > SafeMiB(main.Overview.Memory);
+    public double MaxMemoryMiB => IsRunning ? runningSliderMaximum : Math.Max(MemoryMiB, SafeMiB(main.Overview.Memory));
+    public bool MemoryShort => IsIdle && MemoryMiB > SafeMiB(main.Overview.Memory);
 
     // Объём кратен 16 МБ, чтобы буфер делился на 256 равных блоков карты.
     public double MemoryMiB
@@ -58,6 +75,7 @@ public class TestingViewModel : ObservableObject
         get;
         set
         {
+            if (IsRunning) return;
             field = Math.Max(64, Math.Floor(value / 16) * 16);
             NotifyChanged();
         }
@@ -92,11 +110,6 @@ public class TestingViewModel : ObservableObject
 
     private async Task StartAsync()
     {
-        // Стресс-режим берёт весь допустимый объём, чтобы нагрузить память и все ядра до предела.
-        if (ModeIndex == 3)
-            MemoryMiB = MaxMemoryMiB;
-        // Предупреждение об опасной операции: большой буфер может замедлить Windows и другие программы.
-        // Предупреждение об опасной операции: большой буфер может замедлить Windows и другие программы.
         if ((ModeIndex == 3 || MemoryMiB * 2 > MaxMemoryMiB) && MessageBox.Show(
             UiLanguage.Current.English ? $"The test will use {UiLanguage.Current.Display(TestMemoryText)} and load all CPU cores. Save open documents before continuing. Continue?" : $"Проверка займёт {TestMemoryText} и загрузит все ядра процессора. Компьютер может временно замедлиться, " +
             "сохраните открытые документы. Продолжить?", RAMChecker.Helpers.UiLanguage.Current.Display("Большая нагрузка"), MessageBoxButton.YesNo, MessageBoxImage.Warning) != MessageBoxResult.Yes)
@@ -112,7 +125,8 @@ public class TestingViewModel : ObservableObject
         bool imitation = Environment.GetCommandLineArgs().Contains("--imitation");
         var session = new DiagnosticResult
         {
-            Mode = Modes[ModeIndex].Split(' ')[0],
+            Mode = MemoryDiagnosticService.ModeName((DiagnosticMode)ModeIndex),
+            AlgorithmName = MemoryDiagnosticService.Describe((DiagnosticMode)ModeIndex),
             RequestedBytes = (long)MemoryMiB << 20,
             Configuration = string.Join("\n", main.Overview.ModulesMemory.Select(module =>
                 $"{module.RAM_slot}: {module.RAM_maker} {module.RAM_partNumber}, {module.Size_GB} ГБ, {module.RAM_speed.Split(" (")[0]}"))
@@ -127,23 +141,27 @@ public class TestingViewModel : ObservableObject
         var progress = new Progress<DiagnosticProgress>(progressReport =>
         {
             // Скорость — сколько гигабайт буфера записано и проверено за время с прошлого отчёта.
+            if (active != session) return;
             if (progressReport.Elapsed.TotalSeconds - lastSpeedSample.Seconds >= 0.5)
             {
                 SpeedText = $"{(progressReport.ProcessedBytes - lastSpeedSample.Bytes) / (progressReport.Elapsed.TotalSeconds - lastSpeedSample.Seconds) / (1L << 30):0.0} ГБ/с";
                 lastSpeedSample = (progressReport.Elapsed.TotalSeconds, progressReport.ProcessedBytes);
             }
-            if (progressReport.Map is not null)
-                Cells = MemoryCell.From(progressReport.Map, session.RequestedBytes);
+            if (progressReport.LiveMap is not null)
+                Cells = MemoryCell.From(progressReport.LiveMap, session.RequestedBytes);
             (Stage, Percent, PassText) = (progressReport.Stage, progressReport.Percent, progressReport.Pass.ToString());
             session.ApplyProgress(progressReport);
             NotifyChanged();
         });
+        (Cells, Percent, Stage, PassText, SpeedText, LastResult) = (session.Cells, 0, "Заполнение", "1", "—", null);
+        runningSliderMaximum = MaxMemoryMiB;
         (active, cancellation) = (session, new());
+        NotifyChanged();
         MemoryMonitor.KeepAwake(true);
         DiagnosticResult result;
         try
         {
-            result = await MemoryDiagnosticService.RunAsync(session.RequestedBytes, Durations[ModeIndex], StopOnError, progress, cancellation.Token, imitation);
+            result = await MemoryDiagnosticService.RunAsync(session.RequestedBytes, (DiagnosticMode)ModeIndex, StopOnError, progress, cancellation.Token, imitation);
             result.Samples = session.Samples;
             result.Started = session.Started;
             result.Mode = session.Mode;

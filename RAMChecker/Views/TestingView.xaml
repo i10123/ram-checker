@@ -74,13 +74,16 @@
                     <Border Style="{StaticResource Card}">
                         <StackPanel>
                             <TextBlock Text="{ui:UiText Stage}" Style="{StaticResource SectionTitle}" />
-                            <ProgressBar Value="{Binding Percent, Mode=OneWay}" Height="8" Margin="0,0,0,16" />
-                            <UniformGrid Columns="4">
+                            <StackPanel Visibility="{Binding FiniteMode, Converter={StaticResource BoolToVisibility}}">
+                                <TextBlock Text="{Binding Percent, StringFormat={}{0:0.0}%}" HorizontalAlignment="Right" />
+                                <ProgressBar Value="{Binding Percent, Mode=OneWay}" Height="8" Margin="0,0,0,16" />
+                            </StackPanel>
+                            <UniformGrid Rows="1">
                                 <StackPanel>
                                     <TextBlock Text="{DynamicResource UiElapsed}" Style="{StaticResource Caption}" />
                                     <TextBlock Text="{Binding ElapsedText}" Style="{StaticResource Number}" />
                                 </StackPanel>
-                                <StackPanel>
+                                <StackPanel Visibility="{Binding FiniteMode, Converter={StaticResource BoolToVisibility}}">
                                     <TextBlock Text="{DynamicResource UiRemaining}" Style="{StaticResource Caption}" />
                                     <TextBlock Text="{Binding RemainingText}" Style="{StaticResource Number}" />
                                 </StackPanel>
@@ -100,8 +103,6 @@
                         <StackPanel>
                             <TextBlock Text="{DynamicResource UiTestBufferMap}" Style="{StaticResource SectionTitle}" />
                             <ItemsControl ItemsSource="{Binding Cells}" Style="{StaticResource MemoryMap}" />
-                            <TextBlock Text="{DynamicResource UiEachCellRepresents1256OfTheBufferBrightGreenIndicatesAComple}"
-                                       Style="{StaticResource Caption}" Margin="0,12,0,0" />
                         </StackPanel>
                     </Border>
 
@@ -115,6 +116,8 @@
                                 <TextBlock Text="{DynamicResource UiLoad}" Style="{StaticResource SectionTitle}" />
                                 <TextBlock Text="{DynamicResource UiTestThroughput}" Style="{StaticResource Caption}" />
                                 <TextBlock Text="{ui:UiText SpeedText}" Style="{StaticResource Number}" Margin="0,4,0,12" />
+                                <TextBlock Text="{DynamicResource UiProcessed}" Style="{StaticResource Caption}" />
+                                <TextBlock Text="{ui:UiText ProcessedText}" Style="{StaticResource Number}" Margin="0,4,0,12" />
                                 <TextBlock Text="{DynamicResource UiMemoryUsage}" Style="{StaticResource Caption}" />
                                 <TextBlock Text="{Binding Overview.LoadText}" Style="{StaticResource Number}" />
                             </StackPanel>
