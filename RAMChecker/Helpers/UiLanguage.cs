@@ -27,16 +27,13 @@ public class UiLanguage : INotifyPropertyChanged
         ["Объём"] = "Capacity",
         ["Слот"] = "Slot",
         ["Настроенная скорость (SMBIOS)"] = "Configured speed (SMBIOS)",
-        ["Номинальная частота"] = "Rated speed",
-        ["Номинальная частота JEDEC (SPD)"] = "JEDEC rated speed (SPD)",
         ["Тайминги CL-tRCD-tRP-tRAS"] = "Timings CL-tRCD-tRP-tRAS",
         ["Тайминги JEDEC CL-tRCD-tRP-tRAS"] = "JEDEC timings CL-tRCD-tRP-tRAS",
         ["tRC JEDEC"] = "JEDEC tRC",
-        ["XMP профиль 1"] = "XMP profile 1",
-        ["Напряжение (SMBIOS)"] = "Configured voltage (SMBIOS)",
+        ["Напряжение по данным BIOS (SMBIOS)"] = "Configured voltage (SMBIOS)",
         ["Нет данных"] = "Unavailable",
         ["Системный кэш"] = "System cache",
-        ["Файл подкачки"] = "Paging file",
+        ["Остаток лимита выделения"] = "Remaining commit limit",
         ["Доступно для проверки"] = "Available for testing",
         ["Ошибки памяти в журнале Windows"] = "Memory errors in the Windows event log",
         ["Нет"] = "None",
@@ -92,7 +89,6 @@ public class UiLanguage : INotifyPropertyChanged
             return string.Join(" · ", value.Split(" · ").Select(Display));
         // Legacy history and firmware cards contain formatted Russian units.
         return value.Replace("Модуль ", "Module ").Replace("Блок ", "Block ")
-            .Replace("Нет профиля XMP", "No XMP profile").Replace("вероятно активен", "probably active")
             .Replace("Нет данных", "Unavailable").Replace(" шт.", " modules").Replace(" из ", " of ")
             .Replace("не менее ", "at least ").Replace("ГБ/с", "GiB/s").Replace("МБ/с", "MiB/s")
             .Replace(" ГБ", " GiB").Replace(" МБ", " MiB").Replace(" МГц", " MHz").Replace(" В", " V")

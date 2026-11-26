@@ -56,4 +56,5 @@
     <sys:String x:Key="UiFull2Hours">Full · 2 hours</sys:String>
     <sys:String x:Key="UiContinuousUntilStopped">Continuous · until stopped</sys:String>
     <sys:String x:Key="UiStressAllAvailableMemory">Stress · all available memory</sys:String>
+    <sys:String x:Key="UiLatestSamples">Latest 60 samples</sys:String>
 </ResourceDictionary>

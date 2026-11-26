@@ -6,6 +6,45 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:RAMChecker.ViewModels"
              mc:Ignorable="d" d:DataContext="{d:DesignInstance vm:OverviewViewModel}">
+    <UserControl.Resources>
+        <DataTemplate x:Key="OverviewChart">
+            <Grid Margin="0,4,10,0">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <TextBlock x:Name="Percent" Text="{Binding LoadText}" FontSize="21" FontWeight="SemiBold"
+                           Foreground="DeepSkyBlue" HorizontalAlignment="Right"/>
+                <Grid Grid.Row="1" Margin="0,4">
+                    <Grid.ColumnDefinitions><ColumnDefinition Width="Auto"/><ColumnDefinition/></Grid.ColumnDefinitions>
+                    <Grid Margin="0,0,6,0">
+                        <TextBlock Text="100%" FontSize="12" VerticalAlignment="Top"/>
+                        <TextBlock Text="50%" FontSize="12" VerticalAlignment="Center"/>
+                        <TextBlock Text="0%" FontSize="12" VerticalAlignment="Bottom"/>
+                    </Grid>
+                    <Viewbox Grid.Column="1" Stretch="Fill" Margin="0,7">
+                        <Canvas Width="542" Height="102" ClipToBounds="True">
+                            <Path Data="M0,0 H542 M0,51 H542 M0,102 H542" Stroke="{DynamicResource DividerStrokeColorDefaultBrush}"/>
+                            <Polygon x:Name="Area" Canvas.Left="-58" Canvas.Top="-34" Points="{Binding UsageArea}" Fill="DeepSkyBlue" Opacity="0.12"/>
+                            <Polyline x:Name="Line" Canvas.Left="-58" Canvas.Top="-34" Points="{Binding UsagePoints}" Stroke="DeepSkyBlue" StrokeThickness="2"/>
+                        </Canvas>
+                    </Viewbox>
+                </Grid>
+                <TextBlock Grid.Row="2" Text="{DynamicResource UiLatestSamples}" Style="{StaticResource Caption}" HorizontalAlignment="Center"/>
+            </Grid>
+            <DataTemplate.Triggers>
+                <DataTrigger Binding="{Binding Tag, RelativeSource={RelativeSource AncestorType=ContentControl}}" Value="Commit">
+                    <Setter TargetName="Percent" Property="Text" Value="{Binding CommitPercentText}"/>
+                    <Setter TargetName="Percent" Property="Foreground" Value="MediumAquamarine"/>
+                    <Setter TargetName="Line" Property="Points" Value="{Binding CommitPoints}"/>
+                    <Setter TargetName="Line" Property="Stroke" Value="MediumAquamarine"/>
+                    <Setter TargetName="Area" Property="Points" Value="{Binding CommitArea}"/>
+                    <Setter TargetName="Area" Property="Fill" Value="MediumAquamarine"/>
+                </DataTrigger>
+            </DataTemplate.Triggers>
+        </DataTemplate>
+    </UserControl.Resources>
     <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Margin="16,24,16,8">
             <TextBlock Text="{DynamicResource UiOverview}" Style="{StaticResource PageTitle}" />
@@ -25,25 +64,25 @@
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <TextBlock Text="{DynamicResource UiTotalMemory}" Style="{StaticResource Caption}" />
-                        <TextBlock Text="{ui:UiText TotalText}" Style="{StaticResource Number}" />
+                        <TextBlock Text="{ui:UiText TotalText}" Style="{StaticResource Number}" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <TextBlock Text="{DynamicResource UiInUse}" Style="{StaticResource Caption}" />
-                        <TextBlock Text="{ui:UiText UsedText}" Style="{StaticResource Number}" />
+                        <TextBlock Text="{ui:UiText UsedText}" Style="{StaticResource Number}" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <TextBlock Text="{DynamicResource UiAvailable}" Style="{StaticResource Caption}" />
-                        <TextBlock Text="{ui:UiText AvailableText}" Style="{StaticResource Number}" />
+                        <TextBlock Text="{ui:UiText AvailableText}" Style="{StaticResource Number}" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
                 <Border Style="{StaticResource Card}">
                     <StackPanel>
                         <TextBlock Text="{DynamicResource UiModules}" Style="{StaticResource Caption}" />
-                        <TextBlock Text="{ui:UiText ModulesText}" Style="{StaticResource Number}" />
+                        <TextBlock Text="{ui:UiText ModulesText}" Style="{StaticResource Number}" TextWrapping="Wrap" />
                     </StackPanel>
                 </Border>
             </UniformGrid>
@@ -54,11 +93,11 @@
                     <UniformGrid Columns="2">
                         <StackPanel>
                             <TextBlock Text="{DynamicResource UiPhysicalMemory}" Style="{StaticResource Caption}"/>
-                            <ContentControl Height="150" Content="{Binding}" ContentTemplate="{StaticResource LoadChart}"/>
+                            <ContentControl Height="150" Content="{Binding}" ContentTemplate="{StaticResource OverviewChart}"/>
                         </StackPanel>
                         <StackPanel>
                             <TextBlock Text="{DynamicResource UiCommittedMemoryOfLimit}" Style="{StaticResource Caption}"/>
-                            <ContentControl Height="150" Content="{Binding}" ContentTemplate="{StaticResource CommitChart}"/>
+                            <ContentControl Height="150" Content="{Binding}" Tag="Commit" ContentTemplate="{StaticResource OverviewChart}"/>
                             <TextBlock Text="{ui:UiText CommitText}" Style="{StaticResource Caption}" HorizontalAlignment="Right" Margin="0,4,0,0"/>
                         </StackPanel>
                     </UniformGrid>
@@ -111,17 +150,14 @@
                             <ItemsControl ItemsSource="{Binding BenchmarkBars}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Grid Margin="0,4">
-                                            <Grid.ColumnDefinitions>
-                                                <ColumnDefinition Width="110" />
-                                                <ColumnDefinition Width="210" />
-                                                <ColumnDefinition />
-                                            </Grid.ColumnDefinitions>
-                                            <TextBlock Text="{ui:UiText Name}" Style="{StaticResource Caption}" />
-                                            <Border Grid.Column="1" Width="{Binding Width}" Height="16" CornerRadius="4"
-                                                    HorizontalAlignment="Left" Background="{DynamicResource AccentFillColorDefaultBrush}" />
-                                            <TextBlock Grid.Column="2" Text="{ui:UiText Value}" />
-                                        </Grid>
+                                        <StackPanel Margin="0,4,0,6">
+                                            <DockPanel>
+                                                <TextBlock DockPanel.Dock="Right" Margin="8,0,0,0" Text="{ui:UiText Value}"/>
+                                                <TextBlock Text="{ui:UiText Name}" Style="{StaticResource Caption}"/>
+                                            </DockPanel>
+                                            <ProgressBar Height="5" Margin="0,4,0,0" Minimum="0" Maximum="1"
+                                                         Value="{Binding RelativeSpeed, Mode=OneWay}"/>
+                                        </StackPanel>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>

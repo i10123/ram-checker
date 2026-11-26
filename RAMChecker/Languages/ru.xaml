@@ -56,4 +56,5 @@
     <sys:String x:Key="UiFull2Hours">Полный · 2 часа</sys:String>
     <sys:String x:Key="UiContinuousUntilStopped">Циклический · до остановки</sys:String>
     <sys:String x:Key="UiStressAllAvailableMemory">Стресс · вся свободная память</sys:String>
+    <sys:String x:Key="UiLatestSamples">Последние 60 замеров</sys:String>
 </ResourceDictionary>

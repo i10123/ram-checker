@@ -172,17 +172,25 @@ public sealed class SpdReader : IDisposable
     }
 
     // XMP 2.0 занимает байты 384–511 SPD DDR4. Для компактности показываем только
-    // первый профиль; применение профиля BIOS подтверждается отдельно по SMBIOS.
+    // первый профиль, записанный производителем модуля.
     public static XmpProfile? DecodeDdr4Xmp(byte[] xmp)
     {
         const int profile = 9;
         if (xmp.Length < 128 || xmp[0] != 0x0C || xmp[1] != 0x4A || (xmp[2] & 1) == 0)
             return null;
         int clockPeriod = xmp[profile + 3] * 125 + (sbyte)xmp[profile + 38];
-        int casLatency = xmp[profile + 8], rasToCasDelay = xmp[profile + 9], rowPrecharge = xmp[profile + 10];
+        if (clockPeriod is < 200 or > 1500)
+            return null;
+        // Основная единица времени XMP — 125 пс, знаковая поправка — 1 пс.
+        int Clocks(int units, int fine = 0) => PicosecondsToClocks(units * 125 + fine, clockPeriod);
+        int casLatency = Clocks(xmp[profile + 8], (sbyte)xmp[profile + 37]);
+        int rasToCasDelay = Clocks(xmp[profile + 9], (sbyte)xmp[profile + 36]);
+        int rowPrecharge = Clocks(xmp[profile + 10], (sbyte)xmp[profile + 35]);
         int rowActiveTime = (xmp[profile + 11] & 0x0F) << 8 | xmp[profile + 12];
         int rowCycleTime = (xmp[profile + 11] >> 4) << 8 | xmp[profile + 13];
-        if (clockPeriod is < 200 or > 1500 || new[] { casLatency, rasToCasDelay, rowPrecharge, rowActiveTime, rowCycleTime }.Min() <= 0)
+        rowActiveTime = Clocks(rowActiveTime);
+        rowCycleTime = Clocks(rowCycleTime, (sbyte)xmp[profile + 34]);
+        if (new[] { casLatency, rasToCasDelay, rowPrecharge, rowActiveTime, rowCycleTime }.Min() <= 0)
             return null;
         int speed = (int)(Math.Round(2_000_000d / clockPeriod * 3 / 400) * 400 / 3);
         int centivolts = (xmp[profile] & 0x7F) + ((xmp[profile] & 0x80) != 0 ? 100 : 0);

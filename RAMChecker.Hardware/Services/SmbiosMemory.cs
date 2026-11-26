@@ -82,7 +82,6 @@ public static partial class SmbiosMemory
             RAM_formFactor = record[0x0E] switch { 9 => "DIMM", 13 => "SO-DIMM", _ => ModuleMemoryModel.NoData },
             // На многих платах слоты разных каналов называются одинаково, поэтому добавляем банк.
             RAM_slot = $"{ReadString(0x11)} · {ReadString(0x10)}",
-            ConfiguredSpeedMTs = speedMTs > 0 ? speedMTs : null,
             RAM_speed = speedMTs > 0 ? $"{speedMTs} MT/s ({speedMTs / 2} МГц)" : ModuleMemoryModel.NoData,
             RAM_voltage = voltageMillivolts > 0 ? $"{voltageMillivolts / 1000m:0.00} В" : ModuleMemoryModel.NoData
         };

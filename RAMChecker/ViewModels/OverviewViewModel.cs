@@ -10,7 +10,7 @@ using RAMChecker.Services;
 
 namespace RAMChecker.ViewModels;
 
-public record BarItem(string Name, string Value, double Width);
+public record BarItem(string Name, string Value, double RelativeSpeed);
 
 public class OverviewViewModel : ObservableObject
 {
@@ -40,7 +40,7 @@ public class OverviewViewModel : ObservableObject
     public string CommitText => Memory is { Committed: ulong committedBytes, CommitLimit: ulong commitLimitBytes } ? $"{MemorySnapshot.Format(committedBytes)} из {MemorySnapshot.Format(commitLimitBytes)}" : "—";
     public string CommitPercentText => Memory is { Committed: ulong committedBytes, CommitLimit: > 0 } ? $"{100d * committedBytes / Memory.CommitLimit.Value:0}%" : "—";
     public GridLength CommitUsed => new(Memory?.Committed ?? 0, GridUnitType.Star);
-    public GridLength CommitFree => new(Memory is { Committed: ulong committedBytes, CommitLimit: ulong commitLimitBytes } && commitLimitBytes > committedBytes ? commitLimitBytes - committedBytes : 1, GridUnitType.Star);
+    public GridLength CommitFree => new(Memory?.RemainingCommit ?? 1, GridUnitType.Star);
     public List<KeyValuePair<string, string>> MemoryRows { get; private set; } = [];
     public string AvailableText => Memory is null ? "—" : MemorySnapshot.Format(Memory.Available);
     public bool Loading { get; private set; } = true;
@@ -70,10 +70,9 @@ public class OverviewViewModel : ObservableObject
     [
         new("Производитель", module.RAM_maker), new("Модель", module.RAM_partNumber), new("Серийный номер", module.RAM_serialNumber),
         new("Тип", $"{module.RAM_type} {module.RAM_formFactor}"), new("Объём", $"{module.Size_GB} ГБ"), new("Слот", module.RAM_slot),
-        new("Настроенная скорость (SMBIOS)", module.RAM_speed), new("Номинальная частота JEDEC (SPD)", module.RAM_nominalSpeed),
+        new("Настроенная скорость (SMBIOS)", module.RAM_speed),
         new("Тайминги JEDEC CL-tRCD-tRP-tRAS", module.RAM_timings), new("tRC JEDEC", module.RAM_tRC),
-        new("XMP профиль 1", module.RAM_xmp),
-        new("Напряжение (SMBIOS)", module.RAM_voltage)
+        new("Напряжение по данным BIOS (SMBIOS)", module.RAM_voltage)
     ];
 
     public async Task LoadModulesAsync()
@@ -107,16 +106,8 @@ public class OverviewViewModel : ObservableObject
                 : "";
             foreach (var (module, info) in pairs)
             {
-                module.RAM_nominalSpeed = $"{info.NominalSpeed} MT/s ({info.NominalSpeed / 2} МГц)";
                 module.RAM_timings = $"{info.CasLatency}-{info.RasToCasDelay}-{info.RowPrecharge}-{info.RowActiveTime}";
                 module.RAM_tRC = info.RowCycleTime.ToString();
-                if (info.XmpProfile1 is { } xmp)
-                {
-                    string voltage = xmp.Voltage is double value ? $" · {value:0.00} В" : "";
-                    string status = module.ConfiguredSpeedMTs == xmp.SpeedMTs ? " · вероятно активен" : "";
-                    module.RAM_xmp = $"{xmp.SpeedMTs} MT/s ({xmp.SpeedMTs / 2} МГц) · {xmp.Timings} · tRC {xmp.RowCycleTime}{voltage}{status}";
-                }
-                else module.RAM_xmp = "Нет профиля XMP";
             }
         }
         catch (DllNotFoundException) { SpdStatus = "Для таймингов установите драйвер PawnIO."; }
@@ -194,7 +185,7 @@ public class OverviewViewModel : ObservableObject
         List<KeyValuePair<string, string>> rows =
         [
             new("Системный кэш", snapshot.Cache is ulong cache ? MemorySnapshot.Format(cache) : ModuleMemoryModel.NoData),
-            new("Файл подкачки", snapshot.CommitLimit is ulong commitLimitBytes && commitLimitBytes > snapshot.Total ? MemorySnapshot.Format(commitLimitBytes - snapshot.Total) : "Нет"),
+            new("Остаток лимита выделения", snapshot.RemainingCommit is ulong remaining ? MemorySnapshot.Format(remaining) : ModuleMemoryModel.NoData),
             new("Доступно для проверки", MemorySnapshot.Format((ulong)MemorySnapshot.SafeTestBytes(snapshot))),
             new("Ошибки памяти в журнале Windows", wheaErrors)
         ];
@@ -214,7 +205,7 @@ public class OverviewViewModel : ObservableObject
             var benchmark = await MemoryBenchmark.RunAsync();
             double bestSpeed = Math.Max(benchmark.ReadMegabytesPerSecond, Math.Max(benchmark.WriteMegabytesPerSecond, benchmark.CopyMegabytesPerSecond));
             BenchmarkBars = [.. new[] { ("Чтение", benchmark.ReadMegabytesPerSecond), ("Запись", benchmark.WriteMegabytesPerSecond), ("Копирование", benchmark.CopyMegabytesPerSecond) }
-                .Select(bar => new BarItem(bar.Item1, $"{bar.Item2:N0} МБ/с", bar.Item2 / bestSpeed * 200))];
+                .Select(bar => new BarItem(bar.Item1, $"{bar.Item2:N0} МБ/с", bestSpeed > 0 ? bar.Item2 / bestSpeed : 0))];
             BenchmarkText = $"Задержка: {benchmark.LatencyNanoseconds:0.0} нс";
         }
         catch (Exception ex) { BenchmarkText = "Замер не выполнен: " + ex.Message; }

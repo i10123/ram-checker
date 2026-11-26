@@ -15,15 +15,12 @@ namespace RAMChecker.Models
         public string RAM_slot { get; set; } = NoData;
         public string RAM_voltage { get; set; } = NoData;
 
-        // Настроенная в BIOS скорость из SMBIOS и паспортная из SPD, в MT/s.
-        public int? ConfiguredSpeedMTs { get; set; }
+        // Настроенная в BIOS скорость из SMBIOS, в MT/s.
         public string RAM_speed { get; set; } = NoData;
-        public string RAM_nominalSpeed { get; set; } = NoData;
 
         // Тайминги CL-tRCD-tRP-tRAS и tRC в тактах по паспорту SPD.
         public string RAM_timings { get; set; } = NoData;
         public string RAM_tRC { get; set; } = NoData;
-        public string RAM_xmp { get; set; } = NoData;
 
         public string DisplayName => $"Модуль {Number} · {RAM_maker} {RAM_partNumber}";
     }

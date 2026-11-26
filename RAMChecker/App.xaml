@@ -61,11 +61,11 @@
         <DataTemplate x:Key="TableRow">
             <Grid Margin="0,4">
                 <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="220" />
+                    <ColumnDefinition Width="1.1*" />
                     <ColumnDefinition />
                 </Grid.ColumnDefinitions>
                 <TextBlock Style="{StaticResource Caption}" Text="{ui:UiText Key}" />
-                <TextBlock Grid.Column="1" Text="{ui:UiText Value}" TextWrapping="Wrap" />
+                <TextBlock Grid.Column="1" Margin="8,0,0,0" Text="{ui:UiText Value}" TextWrapping="Wrap" />
             </Grid>
         </DataTemplate>
 

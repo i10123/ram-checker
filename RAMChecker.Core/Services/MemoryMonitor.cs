@@ -5,6 +5,8 @@ namespace RAMChecker.Services;
 
 public record MemorySnapshot(ulong Total, ulong Available, ulong? Committed, ulong? CommitLimit, ulong? Cache)
 {
+    public ulong? RemainingCommit => Committed is ulong used && CommitLimit is > 0
+        ? CommitLimit.Value - Math.Min(used, CommitLimit.Value) : null;
     public ulong Used => Total - Available;
     public double LoadPercent => Total == 0 ? 0 : Used * 100d / Total;
     public static string Format(ulong bytes) => bytes < 1073741824
